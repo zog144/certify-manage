@@ -152,3 +152,14 @@ def test_archive_escape_refused(tmp_path):
     live.unlink()
     live.symlink_to("/etc/passwd")
     assert manager.inspect().health == "invalid"
+
+def test_account_identity_pin_refuses_switched_renewal_account(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    path = state / "certbot/config/renewal/station-web.conf"
+    path.write_text(path.read_text().replace("abcdef123456", "abcdef123457"))
+    with pytest.raises(CertificateError, match="acme-account-binding-mismatch"):
+        manager.renew()
+    assert manager.inspect().health == "invalid"

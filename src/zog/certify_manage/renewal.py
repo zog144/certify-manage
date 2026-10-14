@@ -70,7 +70,7 @@ def _parse(raw: str) -> tuple[dict, dict, dict]:
         raise PolicyError("renewal-params-missing")
     return top, params, mapping
 
-def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> None:
+def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> str | None:
     config = state / "certbot" / "config"
     for name in _UNSAFE_CONFIG_ITEMS:
         if (config / name).exists() or (config / name).is_symlink():
@@ -80,7 +80,7 @@ def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> N
     if not config_file.exists() and not config_file.is_symlink():
         if required:
             raise PolicyError("renewal-config-missing")
-        return
+        return None
     if config_file.is_symlink():
         raise PolicyError("renewal-symlink")
     names = sorted(p.name for p in renewal.iterdir())
@@ -116,3 +116,5 @@ def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> N
             raise PolicyError("renewal-authenticator-mismatch")
         if params.get("dns_cloudflare_credentials") != str(state / "dns" / "cloudflare.ini"):
             raise PolicyError("renewal-credential-path-mismatch")
+
+    return params["account"]

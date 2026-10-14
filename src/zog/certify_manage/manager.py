@@ -84,7 +84,10 @@ class CertificateManager:
         protected_directory(self.state, owner=os.geteuid())
         status = inspect_cert(self.state / "certbot" / "config", self.policy)
         try:
-            validate_renewal(self.state, self.policy, required=status.health != "missing")
+            account = validate_renewal(self.state, self.policy, required=status.health != "missing")
+            record = self._read()
+            if record and record.get("account_id") and record["account_id"] != account:
+                raise PolicyError("acme-account-changed")
         except (PolicyError, OSError):
             status = replace(status, health="invalid", detail="renewal-policy-mismatch")
         obj = self._read()
@@ -97,10 +100,11 @@ class CertificateManager:
             return replace(status, operation=obj.get("operation"))
         return status
 
-    def _record(self, operation: str, status: str, fingerprint: str | None = None) -> None:
+    def _record(self, operation: str, status: str, fingerprint: str | None = None, account_id: str | None = None) -> None:
         _save(self._record_path(), {"schema": "zog-certify-operation-v1",
              "policy_sha256": self.policy.fingerprint, "operation": operation,
              "status": status, "certificate_fingerprint": fingerprint,
+             "account_id": account_id,
              "updated_at": datetime.now(timezone.utc).isoformat()})
 
     def _execute(self, operation: str) -> CertificateStatus:
@@ -115,22 +119,26 @@ class CertificateManager:
                 raise CertificateError("renew-requires-valid-lineage")
             # Certbot restores settings from its lineage, not solely argv.
             # Verify the on-disk authority before each mutating invocation.
-            validate_renewal(self.state, self.policy, required=operation == "renew")
+            account_before = validate_renewal(self.state, self.policy, required=operation == "renew")
+            if operation == "renew" and (not old or not old.get("account_id") or old["account_id"] != account_before):
+                raise CertificateError("acme-account-binding-mismatch")
             args = self.adapter.arguments(operation, self.state, self.policy)
-            self._record(operation, "uncertain", before.fingerprint_sha256)
+            self._record(operation, "uncertain", before.fingerprint_sha256, account_before)
             code = self.adapter.run(args)
             after = inspect_cert(self.state / "certbot" / "config", self.policy)
             try:
                 if code != 0 or after.health != "valid":
                     raise CertificateError("certbot-operation-failed-or-invalid")
-                validate_renewal(self.state, self.policy, required=True)
+                account_after = validate_renewal(self.state, self.policy, required=True)
+                if operation == "renew" and account_after != account_before:
+                    raise CertificateError("acme-account-changed")
             except (PolicyError, CertificateError, OSError, ValueError):
-                self._record(operation, "failed", before.fingerprint_sha256)
+                self._record(operation, "failed", before.fingerprint_sha256, account_before)
                 raise CertificateError("certbot-operation-failed-or-invalid") from None
             if operation == "issue" and after.fingerprint_sha256 == before.fingerprint_sha256:
                 self._record(operation, "failed")
                 raise CertificateError("certificate-was-not-issued")
-            self._record(operation, "ready", after.fingerprint_sha256)
+            self._record(operation, "ready", after.fingerprint_sha256, account_after)
             return after
 
     def issue(self) -> CertificateStatus:
@@ -147,6 +155,8 @@ class CertificateManager:
             current = inspect_cert(self.state / "certbot" / "config", self.policy)
             if current.health != "valid":
                 raise CertificateError("recover-requires-valid-lineage")
-            validate_renewal(self.state, self.policy, required=True)
-            self._record("recover", "ready", current.fingerprint_sha256)
+            account = validate_renewal(self.state, self.policy, required=True)
+            if old.get("account_id") and old["account_id"] != account:
+                raise CertificateError("acme-account-changed")
+            self._record("recover", "ready", current.fingerprint_sha256, account)
             return current
