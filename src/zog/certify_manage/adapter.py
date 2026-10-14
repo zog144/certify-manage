@@ -17,7 +17,7 @@ class CertbotAdapter:
         if action not in ("issue", "renew"):
             raise PolicyError("unsupported-action")
         cfg = state / "certbot" / "config"
-        base = [self.executable, "--non-interactive", "--config-dir", str(cfg),
+        base = [self.executable, "--non-interactive", "--no-directory-hooks", "--disable-renew-updates", "--config-dir", str(cfg),
                 "--work-dir", str(state / "certbot" / "work"),
                 "--logs-dir", str(state / "certbot" / "logs"),
                 "--server", policy.acme_directory,

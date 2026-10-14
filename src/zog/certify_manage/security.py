@@ -46,3 +46,36 @@ def secret_file(path: Path, *, owner: int) -> None:
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_mode & 0o077 or info.st_nlink != 1:
         raise PolicyError("unsafe-secret-file")
+
+def protected_file_read(state: Path, relative: Path, max_bytes: int) -> bytes:
+    """Read a private file through anchored NOFOLLOW directory descriptors."""
+    if relative.is_absolute() or not relative.parts or any(
+        bit in ("", ".", "..") for bit in relative.parts
+    ):
+        raise PolicyError("invalid-private-path")
+    owner = os.geteuid()
+    protected_directory(state, owner=owner)
+    fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        for segment in relative.parts[:-1]:
+            child = os.open(segment, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            info = os.fstat(child)
+            if info.st_uid != owner or info.st_mode & 0o022:
+                os.close(child)
+                raise PolicyError("unsafe-private-parent")
+            os.close(fd)
+            fd = child
+        leaf = os.open(relative.parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+        try:
+            info = os.fstat(leaf)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != owner or
+                info.st_mode & 0o022 or info.st_nlink != 1 or info.st_size > max_bytes):
+                raise PolicyError("unsafe-private-file")
+            raw = os.read(leaf, max_bytes + 1)
+            if len(raw) > max_bytes:
+                raise PolicyError("private-file-too-large")
+            return raw
+        finally:
+            os.close(leaf)
+    finally:
+        os.close(fd)
