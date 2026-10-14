@@ -163,3 +163,27 @@ def test_account_identity_pin_refuses_switched_renewal_account(tmp_path):
     with pytest.raises(CertificateError, match="acme-account-binding-mismatch"):
         manager.renew()
     assert manager.inspect().health == "invalid"
+
+def test_operation_journal_symlink_cannot_escape_state(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.prepare()
+    outside = tmp_path / "outside"
+    outside.write_text("protected")
+    (state / "operations/station-web.json").symlink_to(outside)
+    with pytest.raises((OSError, CertificateError, ValueError)):
+        manager.issue()
+    assert outside.read_text() == "protected"
+
+def test_lock_symlink_rejected(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.prepare()
+    outside = tmp_path / "outside"
+    outside.write_text("protected")
+    (state / "locks/issuer.lock").symlink_to(outside)
+    with pytest.raises((OSError, CertificateError, ValueError)):
+        manager.issue()
+    assert outside.read_text() == "protected"

@@ -10,7 +10,7 @@
 ## Open security gates before production
 
 1. Host-level execution identity and mounted `STATE` provenance/owner verified by root-control, including restart and reboot.
-2. Whole-state FD-based mutation hardening and symlink/race fault injection; current manager preparation and journal publication still use some pathname operations. A compromised same-UID issuer can mutate its own state. Live root-controlled mount isolation must be observed.
+2. More root-relative directory-fd hardening of the preparation path and symlink/race fault injection; journal publication and lock checks now use no-follow descriptors. A compromised same-UID issuer can mutate its own state. Live root-controlled mount isolation must be observed.
 3. Certbot 5.8.0 real **staging issuance/renewal** of reviewed names, checking exact persisted config fields against this fail-closed parser. Fail if Certbot adds new options; do not relax checks generically.
 4. Identify how policy contents are securely bound from an admin-owned read-only directory via the controller. Never embed the authority inside the writable application state.
 5. Verify issuer-only DNS token permissions and HTTP-01 challenge directory exposure through exact host owner capability. No shell DNS hook.

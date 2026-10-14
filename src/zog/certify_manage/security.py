@@ -43,9 +43,14 @@ def trusted_policy(path: Path) -> bytes:
         os.close(fd)
 
 def secret_file(path: Path, *, owner: int) -> None:
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_mode & 0o077 or info.st_nlink != 1:
-        raise PolicyError("unsafe-secret-file")
+    protected_directory(path.parent, owner=owner)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != owner or info.st_mode & 0o077 or info.st_nlink != 1:
+            raise PolicyError("unsafe-secret-file")
+    finally:
+        os.close(fd)
 
 def protected_file_read(state: Path, relative: Path, max_bytes: int, *, private: bool = False) -> bytes:
     """Read a private file through anchored NOFOLLOW directory descriptors."""

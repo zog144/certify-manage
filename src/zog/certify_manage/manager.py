@@ -7,6 +7,7 @@ from pathlib import Path
 import fcntl
 import json
 import os
+import stat
 
 from .adapter import CertbotAdapter
 from .certificates import inspect_cert
@@ -21,23 +22,30 @@ class UncertainOperation(CertificateError):
     pass
 
 def _save(path: Path, data: dict) -> None:
+    """Durably replace one operation record via its already-open directory."""
     raw = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
-    tmp = path.with_name(path.name + ".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(raw)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-        d = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        info = os.fstat(parent)
+        if info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise CertificateError("unsafe-operation-directory")
+        temp = path.name + ".tmp"
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                     0o600, dir_fd=parent)
         try:
-            os.fsync(d)
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(raw)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temp, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+            os.fsync(parent)
         finally:
-            os.close(d)
+            try:
+                os.unlink(temp, dir_fd=parent)
+            except FileNotFoundError:
+                pass
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        os.close(parent)
 
 class CertificateManager:
     def __init__(self, state: Path, policy: Authorization, adapter: CertbotAdapter | None = None):
@@ -71,8 +79,12 @@ class CertificateManager:
     @contextmanager
     def _locked(self):
         self.prepare()
-        fd = os.open(self.state / "locks" / "issuer.lock", os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fd = os.open(self.state / "locks" / "issuer.lock",
+                     os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
         try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1 or info.st_mode & 0o077:
+                raise CertificateError("unsafe-lock-file")
             fcntl.flock(fd, fcntl.LOCK_EX)
             yield
         finally:
