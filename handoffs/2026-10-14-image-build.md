@@ -1,0 +1,9 @@
+# Handoff to image-build Regular — immutable certify-manage software
+
+**Source:** `zog144/certify-manage` `unstable` (review exact HEAD at execution time). **Priority:** before any live certificate attempt. **Owner:** image-build Regular. **Consumer:** box-control, host-deploy.
+
+Build a reviewed immutable software artifact/view containing `zog.certify_manage`, `cryptography`, exact **Certbot 5.8.0**, and **certbot-dns-cloudflare 5.8.0** as optional provider, including pinned full transitive dependencies, SPDX/license inventory and provenance. Do not install a runtime virtualenv or `pip` into persistent state. Preserve published views immutable; ensure `/var/lib/zog-certify-manage` and `/run/zog-host/certify-policy` exist as *empty* mount-target directories in the guest rootfs, without secrets. Bind actual absolute certbot executable, Python interpreter and plugin discovery in the runtime view; the current adapter defaults to `/usr/bin/certbot`, and the actual path must be reviewed. Existing `/opt/zog` executable support is an explicit deployment trust decision, not a request argument.
+
+Deliver: published generation/artifact/view SHA256 identities, exact interpreter/Certbot/plugin paths and versions, dependency closure and license/provenance evidence, read-only mode validation, Python import and `certbot --version` / plugin discovery smoke under intended guest identity, and handed-off startup command. No live DNS token or ACME account in image.
+
+Acceptance: a fresh immutable view can execute `python -m zog.certify_manage --help` and Certbot offline plugin discovery; writable mount cannot shadow entry-point binaries; restart selects same preserved certificate state after image upgrade. Do **not** claim ACME issuance, nginx integration, signed archive routing or production cutover.
