@@ -130,7 +130,7 @@ def test_renew_rejects_persisted_hooks(tmp_path):
     manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
     manager.issue()
     path = state / "certbot/config/renewal/station-web.conf"
-    path.write_text(path.read_text() + "post_hook = /bin/true\n")
+    path.write_text(path.read_text().replace("authenticator = webroot\n", "authenticator = webroot\npost_hook = /bin/true\n"))
     with pytest.raises(Exception, match="renewal-unknown"):
         manager.renew()
 
