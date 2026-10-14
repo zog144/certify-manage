@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=80,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "certify-manage"
+version = "0.1.0"
+description = "Zog core certificate lifecycle manager with isolated Certbot ACME backend"
+requires-python = ">=3.11"
+license = "BSD-3-Clause OR GPL-3.0-only"
+license-files = ["LICENSE", "LICENSES/*.txt", "THIRD-PARTY-NOTICES.md"]
+dependencies = ["cryptography>=43,<48"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+certify-manage = "zog.certify_manage.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["zog.certify_manage*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

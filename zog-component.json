@@ -1,0 +1,9 @@
+{
+  "schema": "zog-component-v1",
+  "name": "certify-manage",
+  "version": "0.1.0",
+  "python_namespace": "zog.certify_manage",
+  "dependencies": [],
+  "description": "Protected ACME certificate issuance, renewal and inspection",
+  "license": "BSD-3-Clause OR GPL-3.0-only"
+}
