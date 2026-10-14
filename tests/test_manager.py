@@ -187,3 +187,26 @@ def test_lock_symlink_rejected(tmp_path):
     with pytest.raises((OSError, CertificateError, ValueError)):
         manager.issue()
     assert outside.read_text() == "protected"
+
+def test_private_publication_candidate_is_atomic_and_idempotent(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    issued = manager.issue()
+    receipt = manager.stage()
+    assert receipt["state"] == "issuer-private-unbound"
+    assert receipt["certificate_fingerprint_sha256"] == issued.fingerprint_sha256
+    base = state / "publications/station-web" / issued.fingerprint_sha256
+    assert sorted(p.name for p in base.iterdir()) == ["fullchain.pem", "privkey.pem", "receipt.json"]
+    assert base.stat().st_mode & 0o077 == 0
+    assert all(p.stat().st_mode & 0o077 == 0 for p in base.iterdir())
+    assert "PRIVATE KEY" not in str(receipt)
+    assert manager.stage() == receipt
+
+def test_publication_disallows_unverified_state(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.prepare()
+    with pytest.raises(CertificateError, match="publication-requires-ready-issuance"):
+        manager.stage()

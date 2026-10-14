@@ -54,3 +54,20 @@ The issuer never chooses archive role, grants a registry lease, switches ingress
 5. Station-access and archive-mirror end-to-end acceptance while preserving original production traffic.
 
 Do not use Phase 0/1 records as authoritative deployment readiness.
+
+## Private publication staging, not consumer activation
+
+`certify-manage stage` requires a ready, policy- and account-bound, locally
+verified certificate and creates `publications/<id>/<cert-fingerprint>/`
+containing private `fullchain.pem`, `privkey.pem` and a secret-free
+`receipt.json`. The generation directory is created and fsynced before
+same-filesystem atomic rename; identical staging is idempotent. It is **not**
+a consumer-ready certificate, CA trust assertion, service binding, or permission
+to reload nginx. The receipt deliberately labels it
+`issuer-private-unbound`. A trusted bridge must revalidate source receipt,
+fingerprints and service authorization, then atomically publish a consumer-owned
+version and reload the exact HTTPS service with rollback support.
+
+Never place `publications` under a public static path or grant nginx direct
+access to the issuer's persistent mount. Future producer needs to handle
+interrupted `.pending-*` evidence without silent automatic deletion.

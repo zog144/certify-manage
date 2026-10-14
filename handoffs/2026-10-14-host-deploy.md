@@ -9,3 +9,12 @@ Design an explicitly approved **versioned certificate delivery bridge**: issuer 
 For the **isolated acceptance endpoint**, use an operator-approved real FQDN and the reviewed candidate 18090/18091 wiring, never existing portal's 80/443 cutover prematurely. Start with a staging ACME directory where suitable, avoid rate-limit risk, and confirm the full DNS-01 or HTTP-01 path. Keep original nginx/443 and archive writer untouched until owners authorize the broader E–F transfer. Retain grant, mount, operation, renewal file, boot, controller, fingerprints and browser trust evidence across explicit restart and coordinated reboot.
 
 Return to this chat: selected challenge/authenticator, exact authorized FQDN and cert consumer, protected policy binding contract, versioned publication protocol, issuer-to-owner transfer and rollback semantics, offline + live acceptance evidence, and any API changes requested in certify-manage.
+
+### Available issuer-side primitive
+
+The issuer's new `stage` operation creates the private versioned candidate
+at `publications/<certificate-id>/<fingerprint>/`. It returns metadata only.
+The host-owner delivery bridge must independently authenticate the requested
+service, open the approved private candidate through a limited capability,
+revalidate PEM/receipt/owner/digest, and make its **own** atomic consumer
+publication. The issuer has no nginx permission or service reload action.

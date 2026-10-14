@@ -10,7 +10,7 @@ from .security import trusted_policy
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="certify-manage")
-    parser.add_argument("action", choices=["prepare", "inspect", "issue", "renew", "recover"])
+    parser.add_argument("action", choices=["prepare", "inspect", "issue", "renew", "recover", "stage"])
     parser.add_argument("--policy", type=Path, default=Path("/etc/zog/certify-manage/policy.json"))
     parser.add_argument("--state", type=Path, default=Path("/var/lib/zog-certify-manage"))
     args = parser.parse_args(argv)
@@ -22,7 +22,8 @@ def main(argv=None) -> int:
             manager.prepare()
             value = {"certificate_id": policy.certificate_id, "state": "prepared"}
         else:
-            value = getattr(manager, args.action)().as_dict()
+            result = getattr(manager, args.action)()
+            value = result if args.action == "stage" else result.as_dict()
         print(json.dumps(value, sort_keys=True))
         return 0
     except (PolicyError, CertificateError, OSError, ValueError, KeyError, TypeError):

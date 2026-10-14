@@ -14,6 +14,7 @@ from .certificates import inspect_cert
 from .model import Authorization, CertificateStatus, PolicyError
 from .security import protected_directory, protected_file_read
 from .renewal import validate_renewal
+from .publication import stage_candidate
 
 class CertificateError(RuntimeError):
     pass
@@ -70,7 +71,7 @@ class CertificateManager:
         protected_directory(self.state, owner=os.geteuid())
         for relative in ("certbot", "certbot/config", "certbot/work", "certbot/logs",
                          "challenges", "challenges/" + self.policy.certificate_id,
-                         "dns", "operations", "locks"):
+                         "dns", "operations", "locks", "publications"):
             path = self.state / relative
             if not path.exists():
                 path.mkdir(mode=0o700)
@@ -152,6 +153,20 @@ class CertificateManager:
                 raise CertificateError("certificate-was-not-issued")
             self._record(operation, "ready", after.fingerprint_sha256, account_after)
             return after
+
+    def stage(self) -> dict:
+        """Stage verified issuer-private material; does not export or reload."""
+        with self._locked():
+            old = self._read()
+            if not old or old.get("status") != "ready":
+                raise CertificateError("publication-requires-ready-issuance")
+            account = validate_renewal(self.state, self.policy, required=True)
+            if not account or account != old.get("account_id"):
+                raise CertificateError("publication-account-mismatch")
+            current = inspect_cert(self.state / "certbot" / "config", self.policy)
+            if current.health != "valid" or current.fingerprint_sha256 != old.get("certificate_fingerprint"):
+                raise CertificateError("publication-requires-matching-lineage")
+            return stage_candidate(self.state, self.policy, current)
 
     def issue(self) -> CertificateStatus:
         return self._execute("issue")
