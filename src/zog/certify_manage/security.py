@@ -19,7 +19,7 @@ def protected_directory(path: Path, *, owner: int, mode_private: bool = True) ->
         info = item.lstat()
         if not stat.S_ISDIR(info.st_mode):
             raise PolicyError("unsafe-directory")
-        if info.st_uid not in (0, owner) or info.st_mode & 0o022:
+        if info.st_uid not in (0, owner) or (info.st_mode & 0o022 and not (info.st_uid == 0 and info.st_mode & 0o1000 and stat.S_ISDIR(info.st_mode))):
             raise PolicyError("unsafe-directory-owner")
     last = path.lstat()
     if last.st_uid != owner or (mode_private and (last.st_mode & 0o077)):
