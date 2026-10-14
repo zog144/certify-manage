@@ -46,7 +46,8 @@ class CertbotAdapter:
         try:
             proc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                   stderr=subprocess.DEVNULL, check=False,
-                                  timeout=self.timeout_seconds, close_fds=True)
+                                  timeout=self.timeout_seconds, close_fds=True,
+                                  env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"})
         except (OSError, subprocess.TimeoutExpired):
             return 127
         return proc.returncode

@@ -32,8 +32,22 @@ def make_cert(root, name):
         archived = arc / (filename.replace(".pem", "1.pem"))
         archived.write_bytes(raw)
         archived.chmod(0o600)
-        (live / filename).symlink_to(archived.relative_to(live) if False else
-                                     "../../archive/" + name + "/" + archived.name)
+        (live / filename).symlink_to("../../archive/" + name + "/" + archived.name)
+    renewal = path / "renewal"
+    renewal.mkdir(exist_ok=True)
+    (renewal / (name + ".conf")).write_text(
+        "version = 5.8.0\\n"
+        + "archive_dir = " + str(path / "archive" / name) + "\\n"
+        + "".join(k + " = " + str(path / "live" / name / (k + ".pem")) + "\\n"
+                  for k in ("cert", "privkey", "chain", "fullchain"))
+        + "[renewalparams]\\n"
+        + "account = abcdef123456\\n"
+        + "server = https://acme-staging-v02.api.letsencrypt.org/directory\\n"
+        + "authenticator = webroot\\n"
+        + "webroot_path = " + str(root / "challenges" / name) + ",\\n"
+        + "[[webroot_map]]\\n"
+        + "station.example.org = " + str(root / "challenges" / name) + "\\n"
+    )
 
 class Runner:
     def __init__(self, state, code=0):
@@ -99,3 +113,42 @@ def test_wrong_policy_rejected(tmp_path):
     other = CertificateManager(state, Authorization.from_dict(policy(email="other@example.org")), Runner(state))
     with pytest.raises(CertificateError, match="policy-or-operation-mismatch"):
         other.renew()
+
+def test_renew_rejects_persisted_server_tampering(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    path = state / "certbot/config/renewal/station-web.conf"
+    path.write_text(path.read_text().replace("acme-staging-v02", "acme-v02"))
+    with pytest.raises(Exception, match="renewal-account-or-server-mismatch"):
+        manager.renew()
+
+def test_renew_rejects_persisted_hooks(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    path = state / "certbot/config/renewal/station-web.conf"
+    path.write_text(path.read_text() + "post_hook = /bin/true\\n")
+    with pytest.raises(Exception, match="renewal-unknown"):
+        manager.renew()
+
+def test_unapproved_global_certbot_configuration_blocks_issue(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.prepare()
+    (state / "certbot/config/cli.ini").write_text("post_hook = /bin/true")
+    with pytest.raises(Exception, match="certbot-global-config"):
+        manager.issue()
+
+def test_archive_escape_refused(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    live = state / "certbot/config/live/station-web/cert.pem"
+    live.unlink()
+    live.symlink_to("/etc/passwd")
+    assert manager.inspect().health == "invalid"

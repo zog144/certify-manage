@@ -11,7 +11,8 @@ import os
 from .adapter import CertbotAdapter
 from .certificates import inspect_cert
 from .model import Authorization, CertificateStatus, PolicyError
-from .security import protected_directory
+from .security import protected_directory, protected_file_read
+from .renewal import validate_renewal
 
 class CertificateError(RuntimeError):
     pass
@@ -51,9 +52,8 @@ class CertificateManager:
         path = self._record_path()
         if not path.exists():
             return None
-        if path.is_symlink() or path.stat().st_size > 65536:
-            raise CertificateError("unsafe-operation-record")
-        obj = json.loads(path.read_text())
+        obj = json.loads(protected_file_read(
+            self.state, Path("operations") / path.name, 65536))
         if not isinstance(obj, dict) or obj.get("schema") != "zog-certify-operation-v1" or obj.get("policy_sha256") != self.policy.fingerprint:
             raise CertificateError("policy-or-operation-mismatch")
         return obj
@@ -83,6 +83,10 @@ class CertificateManager:
         # A read must not create mounts, directories, locks or state.
         protected_directory(self.state, owner=os.geteuid())
         status = inspect_cert(self.state / "certbot" / "config", self.policy)
+        try:
+            validate_renewal(self.state, self.policy, required=status.health != "missing")
+        except (PolicyError, OSError):
+            status = replace(status, health="invalid", detail="renewal-policy-mismatch")
         obj = self._read()
         if obj:
             detail = obj.get("status")
@@ -109,13 +113,20 @@ class CertificateManager:
                 raise CertificateError("lineage-already-present")
             if operation == "renew" and before.health != "valid":
                 raise CertificateError("renew-requires-valid-lineage")
+            # Certbot restores settings from its lineage, not solely argv.
+            # Verify the on-disk authority before each mutating invocation.
+            validate_renewal(self.state, self.policy, required=operation == "renew")
             args = self.adapter.arguments(operation, self.state, self.policy)
             self._record(operation, "uncertain", before.fingerprint_sha256)
             code = self.adapter.run(args)
             after = inspect_cert(self.state / "certbot" / "config", self.policy)
-            if code != 0 or after.health != "valid":
+            try:
+                if code != 0 or after.health != "valid":
+                    raise CertificateError("certbot-operation-failed-or-invalid")
+                validate_renewal(self.state, self.policy, required=True)
+            except (PolicyError, CertificateError, OSError, ValueError):
                 self._record(operation, "failed", before.fingerprint_sha256)
-                raise CertificateError("certbot-operation-failed-or-invalid")
+                raise CertificateError("certbot-operation-failed-or-invalid") from None
             if operation == "issue" and after.fingerprint_sha256 == before.fingerprint_sha256:
                 self._record(operation, "failed")
                 raise CertificateError("certificate-was-not-issued")
@@ -136,5 +147,6 @@ class CertificateManager:
             current = inspect_cert(self.state / "certbot" / "config", self.policy)
             if current.health != "valid":
                 raise CertificateError("recover-requires-valid-lineage")
+            validate_renewal(self.state, self.policy, required=True)
             self._record("recover", "ready", current.fingerprint_sha256)
             return current
