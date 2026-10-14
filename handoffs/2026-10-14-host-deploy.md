@@ -18,3 +18,26 @@ The host-owner delivery bridge must independently authenticate the requested
 service, open the approved private candidate through a limited capability,
 revalidate PEM/receipt/owner/digest, and make its **own** atomic consumer
 publication. The issuer has no nginx permission or service reload action.
+
+## Revised topology: always terminate TLS at local Zog
+
+The public HTTPS certificate's bound consumer is the **local Zog nginx
+front door**, not the central command center. Direct access and NAT/LAN
+access through `network-traverse` must result in the same local SNI,
+certificate, trust and key ownership. In transit mode the relay forwards
+opaque TLS bytes (or an equivalently non-terminating transport): it
+must never hold the certificate private key or terminate the public TLS.
+If another TLS-terminating proxy topology is later proposed, treat it
+as a distinct design requiring explicit approval, not this contract.
+
+Accept either a centrally authorized hostname assignment delivered over
+the existing outbound host channel, or an explicitly local administrator
+approved hostname, but both must be **verified by a trusted host owner**
+before provisioning the exact protected issuer policy. Do not require a
+command-center Cloudflare token on standalone installations. The DNS
+challenge is either (a) issuer-local Cloudflare plugin with a separately
+provisioned, narrowly scoped credential, or (b) an explicitly authorized
+central broker when DNS authority is central. For NAT, prefer DNS-01.
+Request source identity/provenance/authority revisions from the relevant
+host binding, refuse policy conflicts and never silently reissue for a
+hostname advertised by an unauthenticated beacon.

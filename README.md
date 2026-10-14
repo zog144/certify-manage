@@ -44,3 +44,20 @@ Owner handoffs: [image-build](handoffs/2026-10-14-image-build.md),
 [station-access/host-install](handoffs/2026-10-14-station-access-host-install.md).
 The [security review](docs/security-review-2026-10-14.md) lists outstanding
 live integration and safety acceptance gates.
+
+## Installation topology and DNS authority
+
+Public HTTPS terminates at the **local Zog installation**, including hosts
+behind LAN/NAT reached through a non-terminating `network-traverse` tunnel.
+The command center is neither a mandatory TLS terminator nor a mandatory
+DNS credential holder. Two supported **intended deployment contracts** are:
+a centrally assigned FQDN retrieved by an approved outbound host, and a
+standalone locally approved FQDN configured through local station-access.
+Both converge on one protected host-owner issuer policy. The existing
+Cloudflare DNS-01 adapter accepts an issuer-owned 0600 credential file;
+**web-interface credential-to-issuer binding is still an integration task**,
+not a currently working unattended feature.
+
+See [deployment modes and certificate authority](docs/deployment-modes.md),
+plus the [host-assignment/local-DNS handoff](handoffs/2026-10-14-local-certificate-assignment.md)
+and [network-traverse handoff](handoffs/2026-10-14-network-traverse-tls.md).

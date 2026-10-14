@@ -22,3 +22,30 @@ receipt under the **issuer-only protected mount**. It is idempotent for
 identical bytes, rejects conflicting generations and never exports the
 private key to nginx, reloads any service or declares browser readiness.
 The host-deploy handoff owns the remaining authorized delivery bridge.
+
+## Standalone local Cloudflare mode versus managed assignment
+
+The Cloudflare authenticator path already implemented by this repository uses
+a mode-0600 file at `<issuer-state>/dns/cloudflare.ini`, opened only under
+the dedicated issuer identity. This is valid for a *standalone* Zog host
+whose administrator has configured a Cloudflare zone/token in the **local
+station-access web interface**; the command center need not hold that token.
+The local UI's stored credentials must not be read opportunistically by
+certify-manage. The trusted local host owner must validate an explicit
+administrator-approved FQDN, zone and provider-credential binding and
+provision a dedicated, narrowly scoped credential to the issuer mount.
+Revisions and rotation must be bound to the provider and host-owner intent.
+This local UI-to-issuer exchange is **not yet implemented**.
+
+When the command center owns the DNS zone, a future narrowly scoped
+challenge broker may perform DNS-01 updates centrally instead, without
+giving the host a Cloudflare token. The two designs are alternatives,
+not mutual prerequisites. No caller can switch them through arbitrary
+Certbot command flags, ambient environment or an untrusted policy path.
+
+If the host is behind NAT, favor authorized DNS-01: validation of a TXT
+record does not require forwarding public port 80 to the host. Port-443
+HTTPS may be reached either directly or through a reviewed encrypted
+`network-traverse` transport. The **local** nginx/front door holds the
+published key and terminates TLS in both cases. The separate host-deploy
+bridge is still required for publication and reload.

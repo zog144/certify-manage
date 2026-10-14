@@ -71,3 +71,37 @@ version and reload the exact HTTPS service with rollback support.
 Never place `publications` under a public static path or grant nginx direct
 access to the issuer's persistent mount. Future producer needs to handle
 interrupted `.pending-*` evidence without silent automatic deletion.
+
+## Hostname assignment and TLS endpoint scope
+
+The issuer policy's `hostnames` are **outputs** of a trusted provisioning
+decision, not names invented by Certbot, host-deploy, or a beacon. This v1
+schema intentionally does not encode the upstream authority: the host owner
+must authenticate, version and retain the **provenance of that policy** before
+installing it as root-owned read-only content. Two valid sources exist:
+
+- **Command-center-managed:** an enrolled host retrieves an exact, approved
+  FQDN/service binding through an authenticated outbound host-assignment
+  interface. The command center owns the name; a signed heartbeat alone is
+  not permission to issue certificates.
+- **Locally managed:** an administrator of a standalone Zog installation
+  explicitly approves the DNS zone/FQDN, TLS consumer and ACME challenge
+  policy from its *local* management interface. A local UI proposal or saved
+  Cloudflare secret is not by itself the protected owner policy.
+
+When both kinds of authority exist or change, do not choose one implicitly.
+Conflicting assignments, expired/revoked authority, unexpected policy
+revision changes, or missing trusted host-owner binding block new issuance.
+Preserve old cert/account state for inspection and explicit migration.
+
+The certificate consumer is the **local Zog HTTPS front door**. In
+`network-traverse` mode, an intermediary may transport encrypted TCP/TLS
+traffic, but it must **not terminate TLS or possess the Zog private key**.
+TLS SNI, certificate verification and HTTPS readiness are checked against
+the local server reached through the reviewed route. A conventional
+TLS-terminating HTTPS reverse proxy is not an implementation of this mode.
+The ordinary public ACME challenge may be DNS-01, avoiding inbound
+port-80 reachability for hosts behind NAT.
+
+Read [deployment-modes.md](deployment-modes.md) for the separate axes of
+hostname authority, DNS credential location and connection transport.
