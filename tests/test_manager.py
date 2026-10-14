@@ -15,7 +15,7 @@ def make_cert(root, name):
     arc = path / "archive" / name
     live = path / "live" / name
     arc.mkdir(parents=True)
-    live.mkdir(parents=True)
+    live.mkdir(parents=True, mode=0o700)
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     cert = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "station.example.org")]))
             .issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "station.example.org")]))
