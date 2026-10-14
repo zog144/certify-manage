@@ -28,3 +28,19 @@ The host owner prepares a protected state mount and a separately trusted policy 
 ## Public-source and release boundary
 
 First-party material is dual-licensed `BSD-3-Clause OR GPL-3.0-only`; Certbot and provider plugins retain their independent licenses (see `THIRD-PARTY-NOTICES.md`). This component is **not** published on PyPI independently; Zog's aggregate `zog` release process selects verified components.
+
+## Follow-on source work (2026-10-14)
+
+The `unstable` branch additionally contains account-bound renewal hardening,
+real Certbot 5.8.0 offline CLI/plugin smoke tests, and a review-only
+box-control declaration under `integration/box-control/application.py`.
+The `stage` action atomically prepares an **issuer-private** versioned
+certificate/key generation, returning only redacted metadata. It does not
+publish to an HTTPS consumer or reload nginx.
+
+Owner handoffs: [image-build](handoffs/2026-10-14-image-build.md),
+[box-control/root-control](handoffs/2026-10-14-box-control-root-control.md),
+[host-deploy](handoffs/2026-10-14-host-deploy.md),
+[station-access/host-install](handoffs/2026-10-14-station-access-host-install.md).
+The [security review](docs/security-review-2026-10-14.md) lists outstanding
+live integration and safety acceptance gates.

@@ -210,3 +210,12 @@ def test_publication_disallows_unverified_state(tmp_path):
     manager.prepare()
     with pytest.raises(CertificateError, match="publication-requires-ready-issuance"):
         manager.stage()
+
+def test_issuer_disables_directory_hooks(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.prepare()
+    (state / "certbot/config/renewal-hooks").mkdir(mode=0o700)
+    with pytest.raises(Exception, match="certbot-global-config-or-hooks-forbidden"):
+        manager.issue()

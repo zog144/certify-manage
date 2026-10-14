@@ -12,3 +12,13 @@ Install this component and Certbot/optional provider plugin together in a **revi
 Commands default to the state mount and privileged policy location above. For source-only tests, construct `CertificateManager` with a synthetic `Authorization` and a fake runner; never call a public ACME endpoint from CI.
 
 No issuance, privileged host-side installation or service restart is performed by this repository.
+
+## Issuer-private stage operation
+
+After a verified, policy-bound `issue` or `renew`, invoke
+`python -m zog.certify_manage stage`. This creates an atomic immutable-named
+candidate containing `fullchain.pem`, `privkey.pem` and a secret-free
+receipt under the **issuer-only protected mount**. It is idempotent for
+identical bytes, rejects conflicting generations and never exports the
+private key to nginx, reloads any service or declares browser readiness.
+The host-deploy handoff owns the remaining authorized delivery bridge.

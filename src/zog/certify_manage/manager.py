@@ -128,8 +128,8 @@ class CertificateManager:
             before = inspect_cert(self.state / "certbot" / "config", self.policy)
             if operation == "issue" and before.health != "missing":
                 raise CertificateError("lineage-already-present")
-            if operation == "renew" and before.health != "valid":
-                raise CertificateError("renew-requires-valid-lineage")
+            if operation == "renew" and before.health not in ("valid", "expired-or-not-yet-valid"):
+                raise CertificateError("renew-requires-verifiable-lineage")
             # Certbot restores settings from its lineage, not solely argv.
             # Verify the on-disk authority before each mutating invocation.
             account_before = validate_renewal(self.state, self.policy, required=operation == "renew")
