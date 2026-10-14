@@ -29,7 +29,7 @@ def test_contract_fingerprint_stable():
     {"email": "nobody"},
     {"hostnames": ["-bad.example.org"]},
     {"hostnames": ["station.example.org", "a.example.org"]},
-]):
+])
 def test_reject_bad_authority(change):
     with pytest.raises(PolicyError):
         Authorization.from_dict(policy(**change))
