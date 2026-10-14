@@ -16,7 +16,7 @@ def test_http_args_use_isolated_paths(tmp_path):
 
 def test_dns_credentials_are_private(tmp_path):
     a = Authorization.from_dict(policy(challenge="dns-01", dns_plugin="dns-cloudflare"))
-    (tmp_path / "dns").mkdir()
+    (tmp_path / "dns").mkdir(mode=0o700)
     credential = tmp_path / "dns" / "cloudflare.ini"
     credential.write_text("token=NOT-A-LIVE-TOKEN")
     credential.chmod(0o600)
