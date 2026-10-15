@@ -26,3 +26,26 @@ Renewal options are restored from on-disk ConfigObj-style records; Certbot suppo
 
 - https://github.com/certbot/certbot/blob/main/certbot/docs/using.rst
 - https://certbot-dns-cloudflare.readthedocs.io/en/stable/
+
+## Certbot 5.8 compatibility and recovery regression expansion (2026-10-15)
+
+Additional source regression coverage includes validated ConfigObj
+serialization of Certbot's nested `[[webroot_map]]` and optional
+`[acme_renewal_info]`, pinned-version safe key preferences,
+challenge policy and Cloudflare credential controls. Unknown hooks,
+unreviewed nested sections, duplicated ARI records, unsafe webroots,
+invalid cryptographic preferences, symlinked/missing credentials and
+unauthorized authenticators fail closed before Certbot starts.
+
+Fault injection covers a nonzero exit **after** the lineage changed,
+timeouts, incomplete/invalid new material, wrong SAN/account despite
+exit zero, journal fsync failures, explicit recovery acknowledgement,
+and refusal to stage an `recovered-unverified` certificate. These tests
+do not make real ACME requests and do not certify that another Certbot
+version's renewal records are compatible.
+
+The `stage` program is declared in the review-only application alongside
+`issue`, `renew` and `inspect`. Its exact root-control
+selected-operation grant and host-deploy certificate-delivery interface
+require independent deployment/acceptance. Do not enable production
+issuance solely from CI or a successful source-parser test.

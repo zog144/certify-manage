@@ -56,3 +56,15 @@ staging CA trust from production browser trust.
 
 **Production NO-GO:** pending approved native schedule, exact issuer
 observation transport, stage host-binding grant and real systemd/ACME tests.
+
+## Follow-up confirmation: stage declaration present
+
+certify-manage now declares an independently selected
+`stage` program in `integration/box-control/application.py`, with
+the same persistent certificate-data mount and read-only certificate
+policy path. Source tests inspect the AST and enforce the exact
+`stage` command. This closes the **declaration** omission;
+the host owner must still validate actual box-control/root-control
+stage policy, prepared unit, UID/mount, authenticated transfer and
+nginx activation on an isolated systemd host. The source-level
+Certbot regression matrix does not constitute live acceptance.

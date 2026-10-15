@@ -49,3 +49,25 @@ HTTPS may be reached either directly or through a reviewed encrypted
 `network-traverse` transport. The **local** nginx/front door holds the
 published key and terminates TLS in both cases. The separate host-deploy
 bridge is still required for publication and reload.
+
+## Interrupted ACME recovery and safe results
+
+An unknown Certbot result stays `uncertain` even when an older certificate
+remains cryptographically valid. Inspect the retained journal and exact
+lineage/account/authorization using the trusted host owner before attempting
+the privileged recovery path. The CLI requires
+`recover --confirm-uncertain-recovery`; this argument is **only an
+acknowledgement**, not a substitute for a separate administrator-authorized
+root-control policy binding. No automatic timer should invoke recovery.
+
+A reconciled result reports `recovered-unverified` rather than `issued`,
+`renewed`, or `unchanged`. It cannot be staged or published automatically.
+If the saved account differs, a certificate is invalid, or the previous
+renewal baseline is absent, recovery remains blocked. All unexpected
+subprocess failures are reported as a single redacted CLI error, with the
+preflight journal retained. Renewing via Cloudflare requires the current
+issuer-owned 0600 credential file to pass checks **before** calling Certbot.
+
+The review-only box-control application now includes a separate `stage`
+runtime program. This source declaration is not proof of a root-control
+permission grant or native systemd acceptance.

@@ -37,7 +37,7 @@ Do **not** mount the issuer's persistent directory into nginx or station-access.
 
 ## Operations and crash boundaries
 
-`issue` creates a fresh lineage; `renew` uses the existing policy-bound lineage. Both acquire one state-wide flock, record an `uncertain` outcome **before** the Certbot subprocess, run Certbot without a shell, then record a terminal state only after inspection and verification of SANs, validity and private/public key match. Any timeout or unexpected interruption retains uncertainty. Subsequent mutations refuse an uncertain record; `recover` requires explicit operator inspection of an already valid matching lineage. A failing renew attempt retains the previous valid certificate but reports a renewal failure.
+`issue` creates a fresh lineage; `renew` uses the existing policy-bound lineage. Both acquire one state-wide flock, record an `uncertain` outcome **before** the Certbot subprocess, run Certbot without a shell, then record a terminal state only after inspection and verification of SANs, validity and private/public key match. Any timeout or unexpected interruption retains uncertainty. Subsequent mutations refuse an uncertain record; `recover` now also requires an explicit acknowledgement and inspection of a valid, matching lineage. It records `recovered-unverified` rather than fabricating an issued/renewed result, and such recovery is not a publication grant. A failed renew attempt retains the previous valid certificate where possible but keeps the new attempt `uncertain` until reviewed.
 
 `inspect` is side-effect free and never reveals PEM bytes, secrets, account credentials, private key paths or command output. It reports certificate ID, authorized hostnames, validity window, fingerprint and health. For successful `renew`, unchanged fingerprints mean "not due" rather than a new certificate. A successful exit code is not proof of issuance.
 
@@ -121,3 +121,20 @@ A successful `renew` reports `renewed` only if the leaf fingerprint changed;
 Neither result proves nginx loaded the certificate. Host-deploy must bind
 a separately authorized issuer observation to the original controller
 request and consumer publication evidence before declaring HTTPS readiness.
+
+## Selected stage runtime and recovery limitation (2026-10-15)
+
+The review-only `integration/box-control/application.py` now declares
+`stage` as its **own** runtime program beside `issue`, `renew`, and
+`inspect`. It uses the same issuer-owned `certificate-data` mount and
+the same protected owner policy directory but must be launched with
+`program_name="stage"` and a **separately authorized** controller grant.
+It cannot be launched by starting the entire application, and it never
+authorizes nginx deployment on its own.
+
+`recover` is a manual administrative operation. It requires explicit
+acknowledgement and leaves a distinct `recovered-unverified` outcome.
+An older valid certificate after a failed renewal does **not** prove that
+the ACME operation succeeded; recovered status is not eligible for
+`stage`, controller renewal verification, or consumer publication.
+Manual approval of a later fresh operation is an owner workflow.
