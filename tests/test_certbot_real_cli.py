@@ -32,3 +32,25 @@ def test_real_certbot_renew_and_certonly_cli_help(tmp_path):
             capture_output=True, text=True, env=env, timeout=30)
         assert result.returncode == 0
         assert "certbot" in (result.stdout + result.stderr).lower()
+
+@pytest.mark.skipif(shutil.which("certbot") is None, reason="Certbot is packaged in separate smoke job")
+def test_pinned_certbot_configobj_serializes_nested_webroot_and_ari():
+    """Use Certbot's installed ConfigObj encoder, not a handwritten INI parser."""
+    from configobj import ConfigObj
+    from zog.certify_manage.renewal import _parse
+    config = ConfigObj()
+    config["version"] = "5.8.0"
+    config["renewalparams"] = {
+        "account": "abcdef123456",
+        "server": "https://acme-staging-v02.api.letsencrypt.org/directory",
+        "authenticator": "webroot",
+        "key_type": "ecdsa",
+        "webroot_map": {"station.example.org": "/var/lib/zog-certify-manage/challenges/station-web"},
+    }
+    config["acme_renewal_info"] = {"ari_retry_after": "2026-10-15T12:00:00+00:00"}
+    lines = config.write()
+    encoded = "\n".join(line.decode() if isinstance(line, bytes) else line for line in lines)
+    top, params, mapped = _parse(encoded)
+    assert top["version"] == "5.8.0"
+    assert params["authenticator"] == "webroot"
+    assert mapped["station.example.org"].endswith("challenges/station-web")
