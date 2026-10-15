@@ -1,6 +1,7 @@
 """Fail-closed standalone owner CLI. No hostname selection arguments."""
 import argparse
 import json
+import subprocess
 from pathlib import Path
 import sys
 
@@ -33,7 +34,8 @@ def main(argv=None) -> int:
             value = result if args.action == "stage" else result.as_dict()
         print(json.dumps(value, sort_keys=True))
         return 0
-    except (PolicyError, CertificateError, OSError, ValueError, KeyError, TypeError):
+    except (PolicyError, CertificateError, OSError, ValueError, KeyError, TypeError,
+            subprocess.SubprocessError):
         print(json.dumps({"error": "certify-manage-operation-rejected"}), file=sys.stderr)
         return 2
 
