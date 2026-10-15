@@ -27,29 +27,35 @@ def _parse(raw: str) -> tuple[dict, dict, dict]:
     top, params, mapping = {}, {}, {}
     current = top
     section = "top"
+    seen_sections = set()
     for line in raw.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         if line == "[renewalparams]":
-            if section != "top":
+            if section != "top" or "params" in seen_sections:
                 raise PolicyError("renewal-duplicate-section")
+            seen_sections.add("params")
             section, current = "params", params
             continue
         if line == "[[webroot_map]]":
-            if section != "params":
+            if section != "params" or "map" in seen_sections:
                 raise PolicyError("renewal-invalid-section")
+            seen_sections.add("map")
             section, current = "map", mapping
             continue
         if line == "[acme_renewal_info]":
-            # Certbot 5.x can persist ACME Renewal Information timestamps.
-            if section not in ("params", "map"):
+            # Certbot 5.x persists optional ACME Renewal Information metadata.
+            if section not in ("params", "map") or "ari" in seen_sections:
                 raise PolicyError("renewal-invalid-section")
+            seen_sections.add("ari")
             section, current = "ari", {}
             continue
         if line.startswith("[") or "=" not in line:
             raise PolicyError("renewal-unknown-section")
         k, v = [part.strip() for part in line.split("=", 1)]
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", k) and section != "map":
+            raise PolicyError("renewal-invalid-option-name")
         if not k or k in current or len(k) > 255 or len(v) > 4096:
             raise PolicyError("renewal-invalid-entry")
         if section == "ari":
@@ -99,6 +105,23 @@ def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> s
         raise PolicyError("renewal-account-or-server-mismatch")
     if params.get("installer", "None") not in ("None", "none", ""):
         raise PolicyError("renewal-installer-forbidden")
+    # Only known, bounded Certbot key preferences and challenges may be
+    # restored. Keep this list narrow until genuine pinned-version fixtures
+    # demonstrate additional compatible fields.
+    if params.get("key_type", "ecdsa") not in ("rsa", "ecdsa"):
+        raise PolicyError("renewal-unsupported-key-type")
+    if "reuse_key" in params and params["reuse_key"] not in ("True", "False"):
+        raise PolicyError("renewal-invalid-reuse-key")
+    if "rsa_key_size" in params:
+        n = params["rsa_key_size"]
+        if not n.isdecimal() or not 2048 <= int(n) <= 8192:
+            raise PolicyError("renewal-invalid-rsa-size")
+    if "elliptic_curve" in params and params["elliptic_curve"] not in ("secp256r1", "secp384r1", "secp521r1"):
+        raise PolicyError("renewal-invalid-curve")
+    if "pref_challs" in params:
+        names = [p.strip() for p in params["pref_challs"].split(",") if p.strip()]
+        if not names or any(name != policy.challenge for name in names):
+            raise PolicyError("renewal-challenge-policy-mismatch")
     if policy.challenge == "http-01":
         if params.get("authenticator") != "webroot" or "dns_cloudflare_credentials" in params:
             raise PolicyError("renewal-authenticator-mismatch")
@@ -111,6 +134,8 @@ def validate_renewal(state: Path, policy: Authorization, *, required: bool) -> s
                 raise PolicyError("renewal-webroot-path-mismatch")
         if not mapping and "webroot_path" not in params:
             raise PolicyError("renewal-webroot-missing")
+        if mapping and "webroot_path" not in params and set(mapping) != set(policy.hostnames):
+            raise PolicyError("renewal-incomplete-webroot-map")
     else:
         if params.get("authenticator") != "dns-cloudflare" or mapping or "webroot_path" in params:
             raise PolicyError("renewal-authenticator-mismatch")
