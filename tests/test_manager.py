@@ -272,3 +272,15 @@ def test_successful_exit_without_lineage_still_blocks(tmp_path):
     with pytest.raises(UncertainOperation, match="certbot-lineage-not-valid"):
         manager.issue()
     assert manager.inspect().health == "uncertain"
+
+def test_redacted_inspect_binds_policy_and_operation_time(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    issued = manager.issue()
+    value = manager.inspect().as_dict()
+    assert value["policy_sha256"] == manager.policy.fingerprint
+    assert value["operation_updated_at"] is not None
+    assert value["outcome"] == "issued"
+    assert "account_id" not in value
+    assert "privkey" not in str(value)

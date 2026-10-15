@@ -100,6 +100,8 @@ class CertificateStatus:
     operation: str | None = None
     detail: str | None = None
     outcome: str | None = None
+    policy_sha256: str | None = None
+    operation_updated_at: str | None = None
 
     def as_dict(self) -> dict:
         return {**self.__dict__, "hostnames": list(self.hostnames)}

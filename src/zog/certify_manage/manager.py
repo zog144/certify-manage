@@ -104,6 +104,8 @@ class CertificateManager:
         except (PolicyError, OSError):
             status = replace(status, health="invalid", detail="renewal-policy-mismatch")
         obj = self._read()
+        status = replace(status, policy_sha256=self.policy.fingerprint,
+                         operation_updated_at=obj.get("updated_at") if obj else None)
         if obj:
             detail = obj.get("status")
             if detail == "uncertain":
