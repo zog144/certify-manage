@@ -43,9 +43,21 @@ def inspect_cert(root: Path, policy: Authorization, *, now: datetime | None = No
         key_pem = _lineage_file(state, name, "privkey.pem", private=True)
         chain = _lineage_file(state, name, "fullchain.pem", private=False)
         cert = x509.load_pem_x509_certificate(pem)
-        first = x509.load_pem_x509_certificate(chain)
-        if first.fingerprint(hashes.SHA256()) != cert.fingerprint(hashes.SHA256()):
+        certificates = x509.load_pem_x509_certificates(chain)
+        if not 1 <= len(certificates) <= 12:
+            raise PolicyError("invalid-chain-length")
+        if certificates[0].fingerprint(hashes.SHA256()) != cert.fingerprint(hashes.SHA256()):
             raise PolicyError("fullchain-leaf-mismatch")
+        seen = set()
+        for item in certificates:
+            digest = item.fingerprint(hashes.SHA256())
+            if digest in seen:
+                raise PolicyError("duplicate-chain-certificate")
+            seen.add(digest)
+        for child, issuer in zip(certificates, certificates[1:]):
+            if child.issuer != issuer.subject:
+                raise PolicyError("chain-order-mismatch")
+            child.verify_directly_issued_by(issuer)
         key = serialization.load_pem_private_key(key_pem, password=None)
         public = cert.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
         key_public = key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)

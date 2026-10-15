@@ -284,3 +284,14 @@ def test_redacted_inspect_binds_policy_and_operation_time(tmp_path):
     assert value["outcome"] == "issued"
     assert "account_id" not in value
     assert "privkey" not in str(value)
+
+def test_reject_duplicate_fullchain_certificates(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    fullchain = state / "certbot/config/archive/station-web/fullchain1.pem"
+    fullchain.write_bytes(fullchain.read_bytes() * 2)
+    assert manager.inspect().health == "invalid"
+    with pytest.raises(CertificateError, match="publication-requires-matching-lineage"):
+        manager.stage()
