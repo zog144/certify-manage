@@ -109,15 +109,15 @@ class CertificateManager:
             if detail == "uncertain":
                 return replace(status, health="uncertain", operation=obj.get("operation"), detail="operator-recovery-required")
             if detail == "failed":
-                return replace(status, operation=obj.get("operation"), detail="last-operation-failed")
-            return replace(status, operation=obj.get("operation"))
+                return replace(status, operation=obj.get("operation"), detail="last-operation-failed", outcome="failed")
+            return replace(status, operation=obj.get("operation"), outcome=obj.get("outcome"))
         return status
 
-    def _record(self, operation: str, status: str, fingerprint: str | None = None, account_id: str | None = None) -> None:
+    def _record(self, operation: str, status: str, fingerprint: str | None = None, account_id: str | None = None, outcome: str | None = None) -> None:
         _save(self._record_path(), {"schema": "zog-certify-operation-v1",
              "policy_sha256": self.policy.fingerprint, "operation": operation,
              "status": status, "certificate_fingerprint": fingerprint,
-             "account_id": account_id,
+             "account_id": account_id, "outcome": outcome,
              "updated_at": datetime.now(timezone.utc).isoformat()})
 
     def _execute(self, operation: str) -> CertificateStatus:
@@ -137,22 +137,24 @@ class CertificateManager:
                 raise CertificateError("acme-account-binding-mismatch")
             args = self.adapter.arguments(operation, self.state, self.policy)
             self._record(operation, "uncertain", before.fingerprint_sha256, account_before)
+            # A failed exit may follow ACME side effects, so retain the
+            # preflight uncertainty until the owner reconciles the lineage.
             code = self.adapter.run(args)
+            if type(code) is not int or code != 0:
+                raise UncertainOperation("certbot-outcome-unproven")
             after = inspect_cert(self.state / "certbot" / "config", self.policy)
-            try:
-                if code != 0 or after.health != "valid":
-                    raise CertificateError("certbot-operation-failed-or-invalid")
-                account_after = validate_renewal(self.state, self.policy, required=True)
-                if operation == "renew" and account_after != account_before:
-                    raise CertificateError("acme-account-changed")
-            except (PolicyError, CertificateError, OSError, ValueError):
-                self._record(operation, "failed", before.fingerprint_sha256, account_before)
-                raise CertificateError("certbot-operation-failed-or-invalid") from None
+            if after.health != "valid":
+                raise UncertainOperation("certbot-lineage-not-valid")
+            account_after = validate_renewal(self.state, self.policy, required=True)
+            if operation == "renew" and account_after != account_before:
+                raise UncertainOperation("acme-account-changed")
             if operation == "issue" and after.fingerprint_sha256 == before.fingerprint_sha256:
-                self._record(operation, "failed")
-                raise CertificateError("certificate-was-not-issued")
-            self._record(operation, "ready", after.fingerprint_sha256, account_after)
-            return after
+                raise UncertainOperation("certificate-was-not-issued")
+            outcome = ("issued" if operation == "issue" else
+                       "renewed" if after.fingerprint_sha256 != before.fingerprint_sha256
+                       else "unchanged")
+            self._record(operation, "ready", after.fingerprint_sha256, account_after, outcome)
+            return replace(after, operation=operation, outcome=outcome)
 
     def stage(self) -> dict:
         """Stage verified issuer-private material; does not export or reload."""

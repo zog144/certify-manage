@@ -71,8 +71,10 @@ def test_issue_and_renew_and_read_only_inspect(tmp_path):
     assert not (state / "operations").exists()
     result = manager.issue()
     assert result.health == "valid" and len(result.fingerprint_sha256) == 64
-    assert manager.renew().health == "valid"
+    renewed = manager.renew()
+    assert renewed.health == "valid" and renewed.outcome == "unchanged"
     assert manager.inspect().health == "valid"
+    assert manager.inspect().outcome == "unchanged"
     assert runner.count == 2
     with pytest.raises(CertificateError, match="lineage-already-present"):
         manager.issue()
@@ -98,11 +100,14 @@ def test_failed_renew_keeps_certificate_and_reports_failure(tmp_path):
     manager = CertificateManager(state, Authorization.from_dict(policy()), runner)
     manager.issue()
     bad = CertificateManager(state, Authorization.from_dict(policy()), Runner(state, 1))
-    with pytest.raises(CertificateError, match="certbot-operation-failed"):
+    with pytest.raises(UncertainOperation, match="certbot-outcome-unproven"):
         bad.renew()
     status = bad.inspect()
-    assert status.health == "valid"
-    assert status.detail == "last-operation-failed"
+    assert status.health == "uncertain"
+    assert status.detail == "operator-recovery-required"
+    with pytest.raises(UncertainOperation):
+        bad.renew()
+    assert bad.recover().health == "valid"
 
 def test_wrong_policy_rejected(tmp_path):
     state = tmp_path / "state"
@@ -219,3 +224,51 @@ def test_issuer_disables_directory_hooks(tmp_path):
     (state / "certbot/config/renewal-hooks").mkdir(mode=0o700)
     with pytest.raises(Exception, match="certbot-global-config-or-hooks-forbidden"):
         manager.issue()
+
+def test_timeout_leaves_uncertain_journal(tmp_path):
+    import subprocess
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    class LostReply(Runner):
+        def run(self, argv):
+            raise subprocess.TimeoutExpired(argv, 1)
+    lost = CertificateManager(state, Authorization.from_dict(policy()), LostReply(state))
+    with pytest.raises(subprocess.TimeoutExpired):
+        lost.renew()
+    assert lost.inspect().health == "uncertain"
+    with pytest.raises(UncertainOperation):
+        lost.renew()
+    assert lost.recover().health == "valid"
+
+def test_new_fingerprint_reports_renewed(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    previous = manager.issue()
+    class RotatingRunner(Runner):
+        def run(self, argv):
+            if argv[0] == "renew":
+                import shutil
+                shutil.rmtree(self.state / "certbot/config/archive/station-web")
+                shutil.rmtree(self.state / "certbot/config/live/station-web")
+                (self.state / "certbot/config/renewal/station-web.conf").unlink()
+                make_cert(self.state, "station-web")
+            return 0
+    manager = CertificateManager(state, Authorization.from_dict(policy()), RotatingRunner(state))
+    now = manager.renew()
+    assert now.health == "valid" and now.outcome == "renewed"
+    assert now.fingerprint_sha256 != previous.fingerprint_sha256
+    assert manager.inspect().outcome == "renewed"
+
+def test_successful_exit_without_lineage_still_blocks(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    class EmptyRunner(Runner):
+        def run(self, argv):
+            return 0
+    manager = CertificateManager(state, Authorization.from_dict(policy()), EmptyRunner(state))
+    with pytest.raises(UncertainOperation, match="certbot-lineage-not-valid"):
+        manager.issue()
+    assert manager.inspect().health == "uncertain"

@@ -99,6 +99,7 @@ class CertificateStatus:
     days_remaining: int | None = None
     operation: str | None = None
     detail: str | None = None
+    outcome: str | None = None
 
     def as_dict(self) -> dict:
         return {**self.__dict__, "hostnames": list(self.hostnames)}

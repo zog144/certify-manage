@@ -43,11 +43,9 @@ class CertbotAdapter:
     def run(self, args: tuple[str, ...]) -> int:
         # Never log command output: provider plugins and Certbot errors may
         # accidentally contain account or credential material.
-        try:
-            proc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        proc = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                   stderr=subprocess.DEVNULL, check=False,
                                   timeout=self.timeout_seconds, close_fds=True,
                                   env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"})
-        except (OSError, subprocess.TimeoutExpired):
-            return 127
+        # Propagate timeout/launch errors; a prior ACME side effect may exist.
         return proc.returncode

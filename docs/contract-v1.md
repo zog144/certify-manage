@@ -105,3 +105,19 @@ port-80 reachability for hosts behind NAT.
 
 Read [deployment-modes.md](deployment-modes.md) for the separate axes of
 hostname authority, DNS credential location and connection transport.
+
+## Selected-program issuer outcome acceptance
+
+The controller launches one exact selected program and retains its request
+identity. The issuer journals an uncertain Certbot attempt *before* invoking
+the subprocess. A nonzero exit, timeout, interrupted launch, malformed renewal
+configuration, changed ACME account or invalid X.509 leaves the attempt
+uncertain; an unattended timer must **not** blindly resubmit.
+
+After exit zero, issuance also requires exact authorized SAN, X.509 validity,
+private/public key match, persisted lineage policy and stable ACME account.
+A successful `renew` reports `renewed` only if the leaf fingerprint changed;
+`unchanged` means the currently valid certificate remained intact.
+Neither result proves nginx loaded the certificate. Host-deploy must bind
+a separately authorized issuer observation to the original controller
+request and consumer publication evidence before declaring HTTPS readiness.
