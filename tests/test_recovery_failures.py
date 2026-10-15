@@ -67,7 +67,7 @@ def test_certbot_exit_zero_with_invalid_saved_account_retains_uncertainty(tmp_pa
         def run(self, argv):
             make_cert(self.state, "station-web")
             conf = self.state / "certbot/config/renewal/station-web.conf"
-            conf.write_text(conf.read_text().replace("abcdef123456", "too-short"))
+            conf.write_text(conf.read_text().replace("abcdef123456", "bad!"))
             return 0
     manager = CertificateManager(state, Authorization.from_dict(policy()), WrongAccount(state))
     with pytest.raises(Exception, match="renewal-account-or-server-mismatch"):
