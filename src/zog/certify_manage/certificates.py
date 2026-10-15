@@ -6,6 +6,7 @@ import os
 import re
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import ExtensionOID
 from .model import Authorization, CertificateStatus, PolicyError
@@ -73,5 +74,6 @@ def inspect_cert(root: Path, policy: Authorization, *, now: datetime | None = No
                                  cert.fingerprint(hashes.SHA256()).hex(), remaining)
     except FileNotFoundError:
         return CertificateStatus(name, policy.hostnames, "missing")
-    except (ValueError, TypeError, x509.ExtensionNotFound, PolicyError, OSError):
+    except (ValueError, TypeError, x509.ExtensionNotFound, PolicyError, OSError,
+            InvalidSignature, UnsupportedAlgorithm):
         return CertificateStatus(name, policy.hostnames, "invalid", detail="lineage-verification-failed")
