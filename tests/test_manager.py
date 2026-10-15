@@ -89,9 +89,9 @@ def test_interrupted_operation_blocks_mutations(tmp_path):
         manager.issue()
     assert manager.inspect().health == "uncertain"
     with pytest.raises(CertificateError, match="recover-requires-valid-lineage"):
-        manager.recover()
+        manager.recover(acknowledge=True)
     make_cert(state, "station-web")
-    assert manager.recover().health == "valid"
+    assert manager.recover(acknowledge=True).health == "valid"
 
 def test_failed_renew_keeps_certificate_and_reports_failure(tmp_path):
     state = tmp_path / "state"
@@ -107,7 +107,11 @@ def test_failed_renew_keeps_certificate_and_reports_failure(tmp_path):
     assert status.detail == "operator-recovery-required"
     with pytest.raises(UncertainOperation):
         bad.renew()
-    assert bad.recover().health == "valid"
+    recovered = bad.recover(acknowledge=True)
+    assert recovered.health == "valid"
+    assert recovered.outcome == "recovered-unverified"
+    with pytest.raises(CertificateError, match="publication-requires-ready-issuance"):
+        bad.stage()
 
 def test_wrong_policy_rejected(tmp_path):
     state = tmp_path / "state"
@@ -240,7 +244,7 @@ def test_timeout_leaves_uncertain_journal(tmp_path):
     assert lost.inspect().health == "uncertain"
     with pytest.raises(UncertainOperation):
         lost.renew()
-    assert lost.recover().health == "valid"
+    assert lost.recover(acknowledge=True).health == "valid"
 
 def test_new_fingerprint_reports_renewed(tmp_path):
     state = tmp_path / "state"
@@ -295,3 +299,42 @@ def test_reject_duplicate_fullchain_certificates(tmp_path):
     assert manager.inspect().health == "invalid"
     with pytest.raises(CertificateError, match="publication-requires-matching-lineage"):
         manager.stage()
+
+def test_uncertain_recovery_requires_explicit_confirmation(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    manager._record("renew", "uncertain", manager.inspect().fingerprint_sha256,
+                    "abcdef123456")
+    with pytest.raises(CertificateError, match="explicit-recovery-confirmation-required"):
+        manager.recover()
+    assert manager.inspect().health == "uncertain"
+    recovered = manager.recover(acknowledge=True)
+    assert recovered.outcome == "recovered-unverified"
+    assert manager.inspect().outcome == "recovered-unverified"
+    with pytest.raises(CertificateError, match="publication-requires-ready-issuance"):
+        manager.stage()
+
+def test_recovery_refuses_account_change_even_with_confirmation(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    manager._record("renew", "uncertain", manager.inspect().fingerprint_sha256,
+                    "abcdef123456")
+    renewal = state / "certbot/config/renewal/station-web.conf"
+    renewal.write_text(renewal.read_text().replace("abcdef123456", "switched7890"))
+    with pytest.raises(CertificateError, match="acme-account-changed"):
+        manager.recover(acknowledge=True)
+    assert manager.inspect().health == "uncertain"
+
+def test_recovery_fails_closed_with_missing_renewal_baseline(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    manager = CertificateManager(state, Authorization.from_dict(policy()), Runner(state))
+    manager.issue()
+    manager._record("renew", "uncertain", None, "abcdef123456")
+    with pytest.raises(CertificateError, match="renewal-baseline-missing"):
+        manager.recover(acknowledge=True)
+    assert manager.inspect().health == "uncertain"

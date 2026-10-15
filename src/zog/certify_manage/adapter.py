@@ -22,6 +22,10 @@ class CertbotAdapter:
                 "--logs-dir", str(state / "certbot" / "logs"),
                 "--server", policy.acme_directory,
                 "--no-eff-email"]
+        if action == "renew" and policy.challenge == "dns-01":
+            # The saved authenticator restores the credential path; verify
+            # its target remains an issuer-owned private file before execution.
+            secret_file(state / "dns" / "cloudflare.ini", owner=state.stat().st_uid)
         if action == "renew":
             # Certbot reads persisted renewal configuration. Do not use
             # an external unapproved renewal configuration.

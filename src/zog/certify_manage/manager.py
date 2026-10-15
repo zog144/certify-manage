@@ -162,7 +162,9 @@ class CertificateManager:
         """Stage verified issuer-private material; does not export or reload."""
         with self._locked():
             old = self._read()
-            if not old or old.get("status") != "ready":
+            if (not old or old.get("status") != "ready"
+                    or old.get("operation") not in ("issue", "renew")
+                    or old.get("outcome") not in ("issued", "renewed", "unchanged")):
                 raise CertificateError("publication-requires-ready-issuance")
             account = validate_renewal(self.state, self.policy, required=True)
             if not account or account != old.get("account_id"):
@@ -178,16 +180,31 @@ class CertificateManager:
     def renew(self) -> CertificateStatus:
         return self._execute("renew")
 
-    def recover(self) -> CertificateStatus:
+    def recover(self, *, acknowledge: bool = False) -> CertificateStatus:
+        """Manually reconcile uncertain material without claiming Certbot success.
+
+        An existing valid certificate may predate a failed renewal. Explicit
+        recovery unblocks authorized further inspection/work but must not
+        produce a verified issuance/renewal or publication grant.
+        """
+        if acknowledge is not True:
+            raise CertificateError("explicit-recovery-confirmation-required")
         with self._locked():
             old = self._read()
             if old is None or old["status"] != "uncertain":
                 raise CertificateError("no-uncertain-operation")
+            if old.get("operation") not in ("issue", "renew"):
+                raise CertificateError("unsupported-recovery-operation")
             current = inspect_cert(self.state / "certbot" / "config", self.policy)
             if current.health != "valid":
                 raise CertificateError("recover-requires-valid-lineage")
             account = validate_renewal(self.state, self.policy, required=True)
             if old.get("account_id") and old["account_id"] != account:
                 raise CertificateError("acme-account-changed")
-            self._record("recover", "ready", current.fingerprint_sha256, account)
-            return current
+            if old["operation"] == "issue" and old.get("certificate_fingerprint") is not None:
+                raise CertificateError("issue-baseline-conflict")
+            if old["operation"] == "renew" and not old.get("certificate_fingerprint"):
+                raise CertificateError("renewal-baseline-missing")
+            self._record("recover", "ready", current.fingerprint_sha256,
+                         account, "recovered-unverified")
+            return replace(current, operation="recover", outcome="recovered-unverified")
