@@ -3,6 +3,8 @@
 # Cloudflare plugin, cryptography and zog.certify_manage, plus a separately
 # authorized root-owned policy read-only directory capability.
 #
+# Each runtime operation (including stage) requires an explicit program_name;
+# stage needs its OWN separately reviewed root-control policy binding.
 # The policy path below is only a proposed guest destination and MUST be bound
 # by the host owner before any actual invocation. Do not use a writable mount
 # as a replacement for this trusted policy.
@@ -38,6 +40,14 @@ application(
             command=("/usr/bin/python3", "-m", "zog.certify_manage", "renew",
                      "--state", "/var/lib/zog-certify-manage",
                      "--policy", "/run/zog-host/certify-policy/policy.json"),
+            mounts={"certificate-data": "/var/lib/zog-certify-manage"},
+        ),
+        program(
+            name="stage",
+            command=("/usr/bin/python3", "-m", "zog.certify_manage", "stage",
+                     "--state", "/var/lib/zog-certify-manage",
+                     "--policy", "/run/zog-host/certify-policy/policy.json"),
+            execution_timeout_seconds=120,
             mounts={"certificate-data": "/var/lib/zog-certify-manage"},
         ),
         program(
