@@ -54,6 +54,7 @@ def test_invalid_certificate_and_uncertain_state_never_verify(tmp_path):
     assert result["issuer_verified"] is False
     assert result["tls_ready"] is False
     # Existing valid file but an unresolved ACME attempt also blocks.
+    (tmp_path / "second").mkdir(mode=0o700)
     state2, manager2, inspector2 = prepared(tmp_path / "second")
     manager2._record("renew", "uncertain", manager2.inspect().fingerprint_sha256, "abcdef123456")
     result = inspector2.inspect("c" * 32)
