@@ -153,48 +153,61 @@ class IssuerInspector:
         if type(nonce) is not str or NONCE.fullmatch(nonce) is None:
             raise InspectionError("invalid-nonce")
         self._check_policy()
-        with _snapshot_lock(self.state):
-            manager = CertificateManager(self.state, self.policy)
-            status = manager.inspect()  # X.509, fullchain, SAN, key, renewal policy
-            record = manager._read()     # Same shared-lock snapshot, never mutate
-        now = datetime.now(timezone.utc)
-        verified = False
-        if (record is not None and record.get("status") == "ready"
-                and record.get("operation") in ("issue", "renew")
-                and record.get("outcome") in _OUTCOMES
-                and status.health == "valid" and status.detail is None
-                and record.get("certificate_fingerprint") == status.fingerprint_sha256
-                and record.get("policy_sha256") == self.policy.fingerprint
-                and status.operation == record["operation"]
-                and status.outcome == record["outcome"]):
-            try:
-                updated = _timestamp(record.get("updated_at"))
-                verified = updated <= now + timedelta(minutes=2)
-            except InspectionError:
-                verified = False
-        # This is current local certificate evidence, NOT a request-bound
-        # controller attestation and NOT consumer/nginx/browser readiness.
-        result = {
-            "schema": SCHEMA,
-            "nonce": nonce,
-            "certificate_id": status.certificate_id,
-            "hostnames": list(status.hostnames),
-            "policy_sha256": self.policy.fingerprint,
-            "health": status.health,
-            "certificate_fingerprint_sha256": status.fingerprint_sha256,
-            "valid_from": status.valid_from,
-            "expires_at": status.expires_at,
-            "days_remaining": status.days_remaining,
-            "operation": status.operation,
-            "outcome": status.outcome,
-            "operation_updated_at": status.operation_updated_at,
-            "issuer_verified": verified,
-            "observed_at": now.isoformat(),
-            "tls_ready": False,
-        }
+        # The old peer-authenticated socket and the selected one-shot
+        # invocation reuse exactly the same issuer-owned validation.
+        result = inspect_once(self.state, self.policy)
+        result["schema"] = SCHEMA
+        result["nonce"] = nonce
         if set(result) != _FIELDS:
             raise InspectionError("invalid-inspection-result")
         return result
+
+
+def inspect_once(state: Path, policy: Authorization) -> dict:
+    """One finite, read-only issuer snapshot; never attest a controller run.
+
+    A selected inspect runs only after the controller singleton admits it,
+    but using the existing nonblocking writer lock here also guards
+    against unreviewed concurrent mutation of the private lineage.
+    """
+    state = Path(state)
+    with _snapshot_lock(state):
+        manager = CertificateManager(state, policy)
+        status = manager.inspect()  # key, SAN, fullchain, renewal, account
+        record = manager._read()     # under the same issuer snapshot lock
+    now = datetime.now(timezone.utc)
+    verified = False
+    if (record is not None and record.get("status") == "ready"
+            and record.get("operation") in ("issue", "renew")
+            and record.get("outcome") in _OUTCOMES
+            and status.health == "valid" and status.detail is None
+            and record.get("certificate_fingerprint") == status.fingerprint_sha256
+            and record.get("policy_sha256") == policy.fingerprint
+            and status.operation == record["operation"]
+            and status.outcome == record["outcome"]):
+        try:
+            updated = _timestamp(record.get("updated_at"))
+            verified = updated <= now + timedelta(minutes=2)
+        except InspectionError:
+            verified = False
+
+    return {
+        "schema": "zog-certify-inspection-result-v1",
+        "certificate_id": status.certificate_id,
+        "hostnames": list(status.hostnames),
+        "policy_sha256": policy.fingerprint,
+        "health": status.health,
+        "certificate_fingerprint_sha256": status.fingerprint_sha256,
+        "valid_from": status.valid_from,
+        "expires_at": status.expires_at,
+        "days_remaining": status.days_remaining,
+        "operation": status.operation,
+        "outcome": status.outcome,
+        "operation_updated_at": status.operation_updated_at,
+        "issuer_verified": verified,
+        "observed_at": now.isoformat(),
+        "tls_ready": False,
+    }
 
 
 def respond_one(inspector: IssuerInspector, conn: socket.socket):
