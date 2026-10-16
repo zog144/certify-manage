@@ -1,6 +1,6 @@
 # Issuer-UID authenticated X.509 inspection interface (source contract)
 
-**Status:** read-only source implementation, offline tests pending; **not deployed**
+**Status:** read-only source implementation; GitHub Actions 38900854243 passed (Python 3.11/3.12 and pinned Certbot CLI smoke); **not deployed**
 on real systemd, not live ACME, and not public TLS readiness.
 
 ## Why this exists

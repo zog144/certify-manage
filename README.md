@@ -61,3 +61,15 @@ not a currently working unattended feature.
 See [deployment modes and certificate authority](docs/deployment-modes.md),
 plus the [host-assignment/local-DNS handoff](handoffs/2026-10-14-local-certificate-assignment.md)
 and [network-traverse handoff](handoffs/2026-10-14-network-traverse-tls.md).
+
+## Issuer-UID authenticated certificate inspection
+
+A separate read-only `zog.certify_manage.inspection` service and
+`IssuerInspectionClient` now provide bounded, peer-UID-authenticated
+Unix-socket access to the existing issuer-owned X.509/lineage validation,
+without sharing the issuer's 0700 state with host-deploy. This is
+**source-only**: the reviewed controller owner must bind and activate
+the exact socket/service under the original issuer grant; no direct
+systemd unit or live endpoint is installed here. Its `issuer_verified`
+does not authenticate a selected controller request or prove nginx TLS
+readiness. See [issuer inspection contract](docs/issuer-inspection-v1.md).
