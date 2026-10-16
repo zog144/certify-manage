@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from .manager import CertificateManager, CertificateError
+from .inspection_result import selected_inspect
 from .model import Authorization, PolicyError
 from .security import trusted_policy
 
@@ -23,6 +24,12 @@ def main(argv=None) -> int:
         raw = trusted_policy(args.policy)
         policy = Authorization.from_dict(json.loads(raw))
         manager = CertificateManager(args.state, policy)
+        if args.action == "inspect":
+            # One *finite* selected runtime, one schema-pinned line.
+            # Root-control must read it by exact invocation, never infer
+            # certificate validity from the process exit code alone.
+            print(selected_inspect(args.state, policy))
+            return 0
         if args.action == "prepare":
             manager.prepare()
             value = {"certificate_id": policy.certificate_id, "state": "prepared"}
