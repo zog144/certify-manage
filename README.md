@@ -73,3 +73,19 @@ the exact socket/service under the original issuer grant; no direct
 systemd unit or live endpoint is installed here. Its `issuer_verified`
 does not authenticate a selected controller request or prove nginx TLS
 readiness. See [issuer inspection contract](docs/issuer-inspection-v1.md).
+
+## Controller-owned short-lived certificate inspection (2026-10-16)
+
+The **preferred v1 integration** is the already-declared finite
+`certify-manage/inspect` selected program. It now emits one bounded
+`ZOG_CERTIFY_INSPECT_RESULT_V1` stdout record after actual issuer-UID
+X.509, account and renewal-policy validation. This record is **not**
+authenticated until box-control/root-control's planned request/runtime/
+systemd-invocation-specific reader attaches it to the original selected
+inspect request. Certificate validation and nginx/browser readiness
+remain distinct.
+
+See [selected inspect result v1](docs/selected-inspect-result-v1.md).
+The previous [issuer inspection socket](docs/issuer-inspection-v1.md)
+is source-only and **not approved for deployment as a static service**
+under current Zog lifecycle/UID rules.

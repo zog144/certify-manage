@@ -138,3 +138,24 @@ An older valid certificate after a failed renewal does **not** prove that
 the ACME operation succeeded; recovered status is not eligible for
 `stage`, controller renewal verification, or consumer publication.
 Manual approval of a later fresh operation is an owner workflow.
+
+## Selected certificate inspection result (2026-10-16)
+
+The existing short-lived `inspect` program now produces exactly one
+bounded `ZOG_CERTIFY_INSPECT_RESULT_V1` stdout record with the strict
+`zog-certify-inspection-result-v1` schema. It reuses the original
+issuer-UID private certificate/X.509/key/Certbot/ACME validation and
+read-only shared lock. `issuer_verified` is true only for valid
+locally observed material consistent with the ready issuer journal.
+A successful selected-program exit is merely a **completed
+observation**, not proof that `issuer_verified` is true.
+
+The issuer cannot attest which controller request/runtime/invocation
+called it. box-control/root-control must bind the stdout line to
+one saved selected `inspect` request and exact native systemd
+invocation, reject missing/duplicate/malformed records, then
+host-deploy independently cross-checks the trusted original
+`renew` request/journal observation. Never make an inspector request
+under the **renew** request ID, and never use raw host-deploy
+journal searches or trust `tls_ready` as true. Details:
+[selected inspect v1](selected-inspect-result-v1.md).

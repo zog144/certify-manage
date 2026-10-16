@@ -1,4 +1,16 @@
-# Issuer-UID authenticated X.509 inspection interface (source contract)
+# Issuer-UID authenticated X.509 inspection interface (deferred design)
+
+**Runtime ownership review, 2026-10-16:** This long-running socket service
+is **not approved for activation** under Zog's current application singleton,
+immutable image, UID grant and root-controlled transient systemd execution.
+Do not install a static host systemd unit or manually bind the issuer
+mount to it. **Preferred v1:** the existing short-lived selected
+`certify-manage/inspect` and its
+[selected invocation-scoped result](selected-inspect-result-v1.md).
+The socket prototype remains as source-only reference for a future
+controller-managed companion runtime requiring a separately reviewed
+durable lifecycle and concurrency contract.
+
 
 **Status:** read-only source implementation; GitHub Actions 38900854243 passed (Python 3.11/3.12 and pinned Certbot CLI smoke); **not deployed**
 on real systemd, not live ACME, and not public TLS readiness.
