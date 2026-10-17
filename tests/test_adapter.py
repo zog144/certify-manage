@@ -32,3 +32,16 @@ def test_renew_selects_exact_lineage(tmp_path):
     args = CertbotAdapter().arguments("renew", tmp_path, a)
     assert args[-3:] == ("--cert-name", "station-web", "--no-random-sleep-on-renew")
     assert "--webroot" not in args
+
+
+def test_certbot_executable_is_exact_immutable_view_path(tmp_path):
+    a = Authorization.from_dict(policy())
+    args = CertbotAdapter().arguments("issue", tmp_path, a)
+    assert args[0] == "/applications/certify-manage/bin/certbot"
+    for value in (
+        "/usr/bin/certbot",
+        "/opt/zog/certbot",
+        "/applications/other/bin/certbot",
+    ):
+        with pytest.raises(PolicyError, match="unapproved-certbot-executable"):
+            CertbotAdapter(executable=value).arguments("issue", tmp_path, a)

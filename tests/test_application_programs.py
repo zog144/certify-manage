@@ -22,11 +22,12 @@ def test_stage_is_a_separate_selected_program_with_existing_policy_and_state():
     assert set(programs) == {"prepare", "issue", "renew", "inspect", "stage"}
     stage_cmd, stage_mount = programs["stage"]
     assert stage_cmd == (
-        "/usr/bin/python3", "-m", "zog.certify_manage", "stage",
+        "/applications/certify-manage/bin/python3", "-m", "zog.certify_manage", "stage",
         "--state", "/var/lib/zog-certify-manage",
         "--policy", "/run/zog-host/certify-policy/policy.json")
     for name, (command, mounts) in programs.items():
         assert mounts == {"certificate-data": "/var/lib/zog-certify-manage"}
+        assert command[0] == "/applications/certify-manage/bin/python3"
         assert command[4:] == ("--state", "/var/lib/zog-certify-manage",
                                 "--policy", "/run/zog-host/certify-policy/policy.json")
         assert command[3] == name

@@ -6,13 +6,15 @@ import subprocess
 from .model import Authorization, PolicyError
 from .security import secret_file
 
+IMMUTABLE_CERTBOT = "/applications/certify-manage/bin/certbot"
+
 @dataclass(frozen=True)
 class CertbotAdapter:
-    executable: str = "/usr/bin/certbot"
+    executable: str = IMMUTABLE_CERTBOT
     timeout_seconds: int = 1200
 
     def arguments(self, action: str, state: Path, policy: Authorization) -> tuple[str, ...]:
-        if self.executable != "/usr/bin/certbot" and not self.executable.startswith("/opt/zog/"):
+        if self.executable != IMMUTABLE_CERTBOT:
             raise PolicyError("unapproved-certbot-executable")
         if action not in ("issue", "renew"):
             raise PolicyError("unsupported-action")
