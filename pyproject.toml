@@ -9,7 +9,7 @@ description = "Zog core certificate lifecycle manager with isolated Certbot ACME
 requires-python = ">=3.11"
 license = "BSD-3-Clause OR GPL-3.0-only"
 license-files = ["LICENSE", "LICENSES/*.txt", "THIRD-PARTY-NOTICES.md"]
-dependencies = ["cryptography>=43,<48"]
+dependencies = ["cryptography>=47,<51"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
