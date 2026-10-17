@@ -37,6 +37,18 @@ jobs:
       - name: Run certificate and manager compatibility coverage
         run: python -m pytest -q tests/test_manager.py tests/test_selected_inspection_result.py
 
+  python-315-certbot-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+      - name: Install selected immutable-view runtime versions
+        run: python -m pip install -e '.[test]' cryptography==50.0.2 pyOpenSSL==26.4.0 certbot==5.8.0 certbot-dns-cloudflare==5.8.0
+      - name: Run certificate and real Certbot compatibility coverage
+        run: python -m pytest -q tests/test_manager.py tests/test_selected_inspection_result.py tests/test_certbot_real_cli.py
+
   certbot-cli-smoke:
     runs-on: ubuntu-latest
     steps:
