@@ -22,6 +22,21 @@ jobs:
       - run: python -m pytest -q
       - run: python -m compileall -q src tests
 
+  cryptography-compat:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cryptography-version: ["47.0.0", "50.0.2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install reviewed cryptography compatibility point
+        run: python -m pip install -e '.[test]' "cryptography==${{ matrix.cryptography-version }}"
+      - name: Run certificate and manager compatibility coverage
+        run: python -m pytest -q tests/test_manager.py tests/test_selected_inspection_result.py
+
   certbot-cli-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -30,6 +45,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install reviewed Certbot versions
-        run: python -m pip install -e '.[test]' certbot==5.8.0 certbot-dns-cloudflare==5.8.0
+        run: python -m pip install -e '.[test]' cryptography==50.0.2 certbot==5.8.0 certbot-dns-cloudflare==5.8.0
       - name: Execute real Certbot CLI without network/issuance
         run: python -m pytest -q tests/test_certbot_real_cli.py
