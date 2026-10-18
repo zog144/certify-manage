@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-16  
 **Producer:** certify-manage Regular  
-**Status:** implemented as a *source-level* selected-program result producer; **not yet** a controller-authenticated result transport, native systemd acceptance or HTTPS readiness.
+**Status (2026-10-18):** selected-program result producer implemented. The separately authenticated invocation-bound result reader is now implemented in box-control/root-control **source** (box-control `dec2def825a474675def51df44d75d534e76508f`; root-control `3a2dd9c935e332e811adaccedf04b16bd2de1ea7`), but **native systemd acceptance, migrated host-deploy consumer, and HTTPS readiness are still pending**.
 
 ## Controller-preferred runtime
 
@@ -41,7 +41,7 @@ The marker is followed by one sorted, compact JSON object with
 | `observed_at` | timezone-aware observation timestamp |
 | `tls_ready` | **always false**; no nginx/public browser assertion |
 
-All fields are bounded, payload is **maximum 4096 bytes including marker**,
+All fields are bounded, payload is **maximum 4096 bytes including marker**. A positive result also requires the coherent operation/outcome combinations `issue → issued` or `renew → renewed|unchanged`; any other pair is reported unverified and cannot be made positive by the serializer.\n\nThe payload
 and JSON is single-line with escaped control characters. No FQDN/path/key
 arguments, arbitrary issuer user, controller request ID or runtime ID are
 accepted from callers. Certificate health may be invalid while process exit
@@ -126,3 +126,11 @@ SNI/CA leaf check. No public TLS cutover until all stages pass.
 This schema **supersedes the long-running socket as the preferred v1
 integration path**, but does not authorize removing historical source
 or launching an uncontrolled inspector companion.
+
+## Controller integration receipt (2026-10-18)
+
+The [box-control/root-control invocation reader implementation handoff](https://github.com/zog144/know-file/blob/e7dab73cd5789e5e4dcb111f6a3dc9d72de060f2/certify-manage/handoffs/controller-invocation-inspection-implementation-2026-10-18.md) reports source-level support for the narrow `renew/inspect/stage` broker and saved-InvocationID journald reader. The two controller CI suites reported **525** box-control and **230** root-control tests passed, respectively. They use simulated systemd/journal evidence and **do not establish native acceptance**.
+
+The producer's wire marker, 15 fields, order-independent JSON interpretation, size bound, and `tls_ready:false` invariant are **unchanged**. Additional producer regression tests reject the semantically impossible positive operation/outcome pairs without modifying the schema. Native Gate B still requires actual journal `_SYSTEMD_INVOCATION_ID` and `_TRANSPORT=stdout` evidence bound to the saved runtime, current protected policy, and separate issuer UID. The consuming host-deploy project awaits its public repository migration; it must issue a new durable selected `inspect` ID and correlate the result with the **original renew** request/issuer journal observation. The root reader's result freshness is limited to 15 minutes; use a new inspect request after expiry, never repurpose the renewal ID.
+
+Source compatibility is not a grant for ACME issuance, automatic renewal, certificate staging, or nginx reload. The short-lived selected inspect remains the only approved v1 runtime topology; the independent socket prototype is deferred.
