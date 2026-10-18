@@ -82,7 +82,8 @@ def serialize_inspection_result(value: dict, policy: Authorization) -> str:
         if (value["health"] != "valid"
                 or leaf is None
                 or value["operation"] not in ("issue", "renew")
-                or value["outcome"] not in ("issued", "renewed", "unchanged")
+                or (value["operation"] == "issue" and value["outcome"] != "issued")
+                or (value["operation"] == "renew" and value["outcome"] not in ("renewed", "unchanged"))
                 or not all((value["valid_from"], value["expires_at"],
                             value["operation_updated_at"], days is not None))):
             raise InspectionRecordError("unproven-inspection-verification")

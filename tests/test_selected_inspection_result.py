@@ -174,3 +174,53 @@ def test_original_socket_envelope_remains_separate_from_invocation_record(tmp_pa
     line = parse_record(selected_inspect(state, auth))
     assert "nonce" not in line
     assert line["schema"] != SOCKET_SCHEMA
+
+@pytest.mark.parametrize(("operation", "outcome"), [
+    ("issue", "renewed"),
+    ("issue", "unchanged"),
+    ("renew", "issued"),
+])
+def test_invalid_operation_outcome_pairs_never_verified_or_serialized(
+        tmp_path, operation, outcome):
+    state, authorization, manager = fixture(tmp_path)
+    current = manager.inspect()
+    manager._record(operation, "ready", current.fingerprint_sha256,
+                    "abcdef123456", outcome)
+    result = parse_record(selected_inspect(state, authorization))
+    assert result["issuer_verified"] is False
+    assert result["operation"] == operation
+    assert result["outcome"] == outcome
+    assert result["tls_ready"] is False
+    tampered = deepcopy(result)
+    tampered["issuer_verified"] = True
+    with pytest.raises(InspectionRecordError, match="unproven-inspection-verification"):
+        serialize_inspection_result(tampered, authorization)
+
+
+@pytest.mark.parametrize(("operation", "outcome"), [
+    ("issue", "issued"),
+    ("renew", "renewed"),
+    ("renew", "unchanged"),
+])
+def test_recognized_ready_operation_pairs_keep_controller_wire_schema(
+        tmp_path, operation, outcome):
+    state, authorization, manager = fixture(tmp_path)
+    current = manager.inspect()
+    manager._record(operation, "ready", current.fingerprint_sha256,
+                    "abcdef123456", outcome)
+    line = selected_inspect(state, authorization)
+    assert line.count(PREFIX) == 1
+    assert line.startswith(PREFIX)
+    assert len(line.encode("ascii")) <= 4096
+    result = parse_record(line)
+    assert result["issuer_verified"] is True
+    assert result["operation"] == operation
+    assert result["outcome"] == outcome
+    assert result["tls_ready"] is False
+    assert set(result) == {
+        "schema", "certificate_id", "hostnames", "policy_sha256", "health",
+        "certificate_fingerprint_sha256", "valid_from", "expires_at",
+        "days_remaining", "operation", "outcome", "operation_updated_at",
+        "issuer_verified", "observed_at", "tls_ready",
+    }
+    assert line == serialize_inspection_result(result, authorization)

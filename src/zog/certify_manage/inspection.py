@@ -180,6 +180,9 @@ def inspect_once(state: Path, policy: Authorization) -> dict:
     if (record is not None and record.get("status") == "ready"
             and record.get("operation") in ("issue", "renew")
             and record.get("outcome") in _OUTCOMES
+            and ((record.get("operation") == "issue" and record.get("outcome") == "issued")
+                 or (record.get("operation") == "renew"
+                     and record.get("outcome") in ("renewed", "unchanged")))
             and status.health == "valid" and status.detail is None
             and record.get("certificate_fingerprint") == status.fingerprint_sha256
             and record.get("policy_sha256") == policy.fingerprint
