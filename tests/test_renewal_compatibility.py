@@ -116,7 +116,7 @@ def test_dns_renew_requires_current_private_credential_not_just_saved_path(tmp_p
     manager = CertificateManager(state, auth)
     manager.prepare()
     secret = state / "dns/cloudflare.ini"
-    secret.write_text("dns_cloudflare_api_token = SYNTHETIC-DO-NOT-USE")
+    secret.write_text("dns_cloudflare_api_token = SYNTHETIC-DO-NOT-USE\\n")
     secret.chmod(0o600)
     adapter = CertbotAdapter()
     assert "--cert-name" in adapter.arguments("renew", state, auth)
