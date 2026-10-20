@@ -89,3 +89,18 @@ See [selected inspect result v1](docs/selected-inspect-result-v1.md).
 The previous [issuer inspection socket](docs/issuer-inspection-v1.md)
 is source-only and **not approved for deployment as a static service**
 under current Zog lifecycle/UID rules.
+
+## Certificate lifecycle integration hardening (2026-10-20)
+
+[Issuer/consumer security contract](docs/issuer-lifecycle-integration-2026-10-20.md)
+and [host-deploy acceptance handoff](handoffs/2026-10-20-certificate-lifecycle-integration.md)
+cover controller-selected issuance/renewal/inspection/staging, root-controlled
+Cloudflare DNS-01 credential admission and rotation, byte-for-byte verified
+private PEM staging, and recovery after lost replies, crashes and reboot.
+
+The issuer now rejects malformed/incorrectly owned token files, changes of
+token bytes **or protected file generation** during Certbot, substituted
+staging PEM material and interrupted private candidate publication. No
+browser/command-center vault access or nginx/public TLS readiness is
+provided by certify-manage. Native immutable Certbot, three-UID systemd,
+ACME staging and independent local HTTPS tests remain separate NO-GO gates.
