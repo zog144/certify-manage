@@ -83,8 +83,11 @@ def test_install_requirements_match_source_selected_commands():
         else:
             timeout = None
         seen[prog] = timeout
-    assert [(x["name"], x["timeout_seconds"] if "timeout_seconds" in x else None)
-            for x in doc["programs"]] == [(name, seen[name]) for name in seen]
+    assert {x["name"]: x.get("timeout_seconds") for x in doc["programs"]} == seen
+    assert doc["programs"][0]["name"] == "prepare"
+    assert {x["name"] for x in doc["programs"][1:]} == {
+        "issue", "renew", "inspect", "stage"
+    }
     assert doc["state"]["guest_mount"] == "/var/lib/zog-certify-manage"
     assert doc["policy"]["host_owner_directory"] == "/etc/zog/certify-policy"
     assert doc["policy"]["guest_file"] == "/run/zog-host/certify-policy/policy.json"
