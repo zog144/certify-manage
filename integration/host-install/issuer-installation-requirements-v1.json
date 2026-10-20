@@ -1,0 +1,74 @@
+{
+  "schema": "zog-certify-issuer-installation-requirements-v1",
+  "application": "certify-manage",
+  "status": "requirements-only-not-runtime-attestation",
+  "controller": {
+    "owner": "box-control/root-control",
+    "execution_identity": "application",
+    "selected_program_only": true,
+    "durable_request_id_required": true,
+    "reuse_request_id_on_lost_reply": true,
+    "immutable_prepared_binding_required": true,
+    "deny_when_unresolved_or_cleanup_pending": true
+  },
+  "software": {
+    "consumer_schema": "application-software-consumer-v1",
+    "view_schema": "application-software-view-v1",
+    "launcher": "/applications/certify-manage/bin/python3",
+    "certbot": "/applications/certify-manage/bin/certbot",
+    "installation": "immutable-published-view-verified-by-controller",
+    "artifact_has_secrets": false
+  },
+  "state": {
+    "mount_name": "certificate-data",
+    "guest_mount": "/var/lib/zog-certify-manage",
+    "expected_mode": "0700",
+    "owner": "controller-issued-dedicated-nonroot-application-uid-gid",
+    "persistence": "controller-owned-state-not-disposable-rootfs",
+    "recovery": "preserve-grant-storage-acme-account-and-lineage"
+  },
+  "policy": {
+    "host_owner_directory": "/etc/zog/certify-policy",
+    "guest_file": "/run/zog-host/certify-policy/policy.json",
+    "schema": "zog-certify-manage-v1",
+    "read_only": true,
+    "assignment": "separately-approved-versioned-local-or-managed-hostname",
+    "missing_policy": "awaiting-operator-approved-hostname-challenge",
+    "no_untrusted_fqdn_or_acme_directory_from_launch_request": true
+  },
+  "programs": [
+    {"name": "prepare", "type": "preparation", "timeout_seconds": 120},
+    {"name": "issue", "type": "selected-runtime"},
+    {"name": "renew", "type": "selected-runtime"},
+    {"name": "inspect", "type": "selected-runtime"},
+    {"name": "stage", "type": "selected-runtime", "timeout_seconds": 120}
+  ],
+  "observation": {
+    "selected_inspect_marker": "ZOG_CERTIFY_INSPECT_RESULT_V1 ",
+    "selected_inspect_schema": "zog-certify-inspection-result-v1",
+    "max_result_bytes": 4096,
+    "issuer_verified_not_equal_exit_zero": true,
+    "trusted_provenance": "controller-saved-request-systemd-invocation-uid-boot-and-journal",
+    "tls_ready": false
+  },
+  "installation": {
+    "first_boot_issue_automatically": false,
+    "run_certbot_as_root": false,
+    "create_new_issuer_uid_in_application": false,
+    "read_station_vault": false,
+    "public_acme_without_separate_approval": false,
+    "nginx_reload": false,
+    "network_traverse_tls_termination": false,
+    "certificate_consumer": "host-deploy-controlled-local-nginx",
+    "certificate_identity_after_reboot": "preserve-existing"
+  },
+  "dns_01": {
+    "plugin": "certbot-dns-cloudflare",
+    "plugin_version": "5.8.0",
+    "secret_path": "/var/lib/zog-certify-manage/dns/cloudflare.ini",
+    "secret_owner": "issuer-uid",
+    "secret_mode": "0600",
+    "grant_authority": "root-control-approved-credential-zone-and-revision",
+    "rotate_only_while_issuer_quiescent": true
+  }
+}
