@@ -77,3 +77,41 @@ def inspect_cert(root: Path, policy: Authorization, *, now: datetime | None = No
     except (ValueError, TypeError, x509.ExtensionNotFound, PolicyError, OSError,
             InvalidSignature, UnsupportedAlgorithm):
         return CertificateStatus(name, policy.hostnames, "invalid", detail="lineage-verification-failed")
+
+def validate_staged_pem(cert_pem: bytes, fullchain_pem: bytes, key_pem: bytes,
+                        policy: Authorization, expected_fingerprint: str) -> None:
+    """Verify the *same bytes* that will be frozen into the private candidate.
+
+    Inspecting Certbot symlinks and then reopening them for staging can
+    otherwise accept a different private key or chain from the inspected
+    generation. Keep the same strict leaf/SAN/chain/key verification here.
+    """
+    try:
+        leaf = x509.load_pem_x509_certificate(cert_pem)
+        chain = x509.load_pem_x509_certificates(fullchain_pem)
+        if not 1 <= len(chain) <= 12:
+            raise PolicyError("invalid-stage-chain")
+        if (leaf.fingerprint(hashes.SHA256()).hex() != expected_fingerprint
+                or chain[0].fingerprint(hashes.SHA256()) != leaf.fingerprint(hashes.SHA256())):
+            raise PolicyError("stage-fingerprint-mismatch")
+        fingerprints = [item.fingerprint(hashes.SHA256()) for item in chain]
+        if len(set(fingerprints)) != len(fingerprints):
+            raise PolicyError("stage-duplicate-chain")
+        for child, issuer in zip(chain, chain[1:]):
+            if child.issuer != issuer.subject:
+                raise PolicyError("stage-chain-order-mismatch")
+            child.verify_directly_issued_by(issuer)
+        key = serialization.load_pem_private_key(key_pem, password=None)
+        if (key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+                != leaf.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)):
+            raise PolicyError("stage-private-key-mismatch")
+        names = tuple(sorted(leaf.extensions.get_extension_for_oid(
+            ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value.get_values_for_type(x509.DNSName)))
+        if names != policy.hostnames:
+            raise PolicyError("stage-san-mismatch")
+        now = datetime.now(timezone.utc)
+        if not leaf.not_valid_before_utc <= now < leaf.not_valid_after_utc:
+            raise PolicyError("stage-invalid-validity")
+    except (ValueError, TypeError, x509.ExtensionNotFound, InvalidSignature,
+            UnsupportedAlgorithm) as exc:
+        raise PolicyError("invalid-staged-certificate") from None

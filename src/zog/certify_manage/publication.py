@@ -7,7 +7,7 @@ import os
 import stat
 from uuid import uuid4
 
-from .certificates import _lineage_file
+from .certificates import _lineage_file, validate_staged_pem
 from .model import Authorization, CertificateStatus, PolicyError
 from .security import protected_directory, protected_file_read
 
@@ -34,7 +34,7 @@ def stage_candidate(state: Path, policy: Authorization, status: CertificateStatu
     key = _lineage_file(state, policy.certificate_id, "privkey.pem", private=True)
     fullchain = _lineage_file(state, policy.certificate_id, "fullchain.pem", private=False)
     cert = _lineage_file(state, policy.certificate_id, "cert.pem", private=False)
-    sha = hashlib.sha256(cert).hexdigest()
+    validate_staged_pem(cert, fullchain, key, policy, status.fingerprint_sha256)
     # inspect_cert uses X.509 certificate fingerprint in DER form; key material
     # gets a separate digest, neither should ever be printed as bytes.
     record = {
@@ -52,6 +52,11 @@ def stage_candidate(state: Path, policy: Authorization, status: CertificateStatu
     if not root.exists():
         root.mkdir(mode=0o700)
     protected_directory(root, owner=os.geteuid())
+    # An interrupted staging write is uncertain evidence. Never erase it
+    # automatically or treat a same-fingerprint final directory as proof
+    # that the abandoned attempt did not modify private material.
+    if any(item.name.startswith(".pending-") for item in root.iterdir()):
+        raise PolicyError("publication-pending-manual-recovery")
     generation = status.fingerprint_sha256
     target = root / generation
     if target.exists() or target.is_symlink():

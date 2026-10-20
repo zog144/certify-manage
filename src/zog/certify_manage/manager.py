@@ -12,7 +12,7 @@ import stat
 from .adapter import CertbotAdapter
 from .certificates import inspect_cert
 from .model import Authorization, CertificateStatus, PolicyError
-from .security import protected_directory, protected_file_read
+from .security import protected_directory, protected_file_read, cloudflare_credential_snapshot
 from .renewal import validate_renewal
 from .publication import stage_candidate
 
@@ -138,12 +138,24 @@ class CertificateManager:
             if operation == "renew" and (not old or not old.get("account_id") or old["account_id"] != account_before):
                 raise CertificateError("acme-account-binding-mismatch")
             args = self.adapter.arguments(operation, self.state, self.policy)
+            # Credential provenance/zone is a separately root-authorized
+            # admission. Here we detect provider-token replacement or in-place
+            # modification across the one selected Certbot operation.
+            token_digest = (cloudflare_credential_snapshot(self.state)
+                            if self.policy.challenge == "dns-01" else None)
             self._record(operation, "uncertain", before.fingerprint_sha256, account_before)
             # A failed exit may follow ACME side effects, so retain the
             # preflight uncertainty until the owner reconciles the lineage.
             code = self.adapter.run(args)
             if type(code) is not int or code != 0:
                 raise UncertainOperation("certbot-outcome-unproven")
+            if token_digest is not None:
+                try:
+                    current_token_digest = cloudflare_credential_snapshot(self.state)
+                except (PolicyError, OSError):
+                    raise UncertainOperation("cloudflare-credential-changed-during-operation") from None
+                if current_token_digest != token_digest:
+                    raise UncertainOperation("cloudflare-credential-changed-during-operation")
             after = inspect_cert(self.state / "certbot" / "config", self.policy)
             if after.health != "valid":
                 raise UncertainOperation("certbot-lineage-not-valid")

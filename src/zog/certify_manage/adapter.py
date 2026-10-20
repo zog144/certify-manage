@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 from .model import Authorization, PolicyError
-from .security import secret_file
+from .security import cloudflare_credential_snapshot
 
 IMMUTABLE_CERTBOT = "/applications/certify-manage/bin/certbot"
 
@@ -27,7 +27,7 @@ class CertbotAdapter:
         if action == "renew" and policy.challenge == "dns-01":
             # The saved authenticator restores the credential path; verify
             # its target remains an issuer-owned private file before execution.
-            secret_file(state / "dns" / "cloudflare.ini", owner=state.stat().st_uid)
+            cloudflare_credential_snapshot(state)
         if action == "renew":
             # Certbot reads persisted renewal configuration. Do not use
             # an external unapproved renewal configuration.
@@ -38,7 +38,7 @@ class CertbotAdapter:
             args += ["--webroot", "--webroot-path", str(state / "challenges" / policy.certificate_id)]
         elif policy.challenge == "dns-01" and policy.dns_plugin == "dns-cloudflare":
             secret = state / "dns" / "cloudflare.ini"
-            secret_file(secret, owner=state.stat().st_uid)
+            cloudflare_credential_snapshot(state)
             args += ["--dns-cloudflare", "--dns-cloudflare-credentials", str(secret)]
         else:
             raise PolicyError("unsupported-challenge")

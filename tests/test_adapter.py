@@ -18,7 +18,7 @@ def test_dns_credentials_are_private(tmp_path):
     a = Authorization.from_dict(policy(challenge="dns-01", dns_plugin="dns-cloudflare"))
     (tmp_path / "dns").mkdir(mode=0o700)
     credential = tmp_path / "dns" / "cloudflare.ini"
-    credential.write_text("token=NOT-A-LIVE-TOKEN")
+    credential.write_text("dns_cloudflare_api_token = SYNTHETIC-DO-NOT-USE")
     credential.chmod(0o600)
     args = CertbotAdapter().arguments("issue", tmp_path, a)
     assert "--dns-cloudflare" in args

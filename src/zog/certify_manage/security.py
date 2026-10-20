@@ -1,5 +1,7 @@
 """Reject weak ownership, symlinks and ambient executable lookup."""
 import os
+import hashlib
+import re
 from pathlib import Path
 import stat
 
@@ -84,3 +86,20 @@ def protected_file_read(state: Path, relative: Path, max_bytes: int, *, private:
             os.close(leaf)
     finally:
         os.close(fd)
+
+def cloudflare_credential_snapshot(state: Path) -> str:
+    """Hash the exact approved issuer-owned token file, never disclose its bytes.
+
+    Root-control authorizes zone/credential revision before provisioning;
+    the issuer can independently enforce only the local file's restricted
+    syntax, immutable file identity and stability during a Certbot attempt.
+    """
+    path = state / "dns" / "cloudflare.ini"
+    secret_file(path, owner=os.geteuid())
+    info = path.lstat()
+    if stat.S_IMODE(info.st_mode) != 0o600:
+        raise PolicyError("unsafe-cloudflare-mode")
+    raw = protected_file_read(state, Path("dns/cloudflare.ini"), 8192, private=True)
+    if not re.fullmatch(rb"dns_cloudflare_api_token = [A-Za-z0-9_-]{20,4096}\n", raw):
+        raise PolicyError("unsupported-cloudflare-credential-format")
+    return hashlib.sha256(raw).hexdigest()
