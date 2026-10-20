@@ -112,6 +112,8 @@ def validate_staged_pem(cert_pem: bytes, fullchain_pem: bytes, key_pem: bytes,
         now = datetime.now(timezone.utc)
         if not leaf.not_valid_before_utc <= now < leaf.not_valid_after_utc:
             raise PolicyError("stage-invalid-validity")
+    except PolicyError:
+        raise
     except (ValueError, TypeError, x509.ExtensionNotFound, InvalidSignature,
-            UnsupportedAlgorithm) as exc:
+            UnsupportedAlgorithm):
         raise PolicyError("invalid-staged-certificate") from None
