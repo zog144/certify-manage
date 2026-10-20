@@ -183,3 +183,65 @@ def test_renew_fails_closed_if_approved_credential_changes_during_certbot(tmp_pa
     assert manager.inspect().health == "uncertain"
     with pytest.raises(UncertainOperation, match="operator-recovery-required"):
         manager.renew()
+
+
+def test_identical_token_replacement_has_distinct_issuer_snapshot(tmp_path):
+    state = tmp_path / "issuer"
+    state.mkdir(mode=0o700)
+    (state / "dns").mkdir(mode=0o700)
+    token = _credential(state)
+    before = cloudflare_credential_snapshot(state)
+    # The host owner uses a private fsynced temp + atomic replacement. Even
+    # keeping token bytes unchanged must produce a new file-generation check.
+    replacement = state / "dns" / ".replacement"
+    replacement.write_bytes(token.read_bytes())
+    replacement.chmod(0o600)
+    os.replace(replacement, token)
+    after = cloudflare_credential_snapshot(state)
+    assert before != after
+
+
+def test_expired_certificate_blocks_private_stage_and_positive_inspection(tmp_path, monkeypatch):
+    import zog.certify_manage.certificates as certs
+    from datetime import datetime, timezone, timedelta
+    from zog.certify_manage.inspection_result import selected_inspect, PREFIX
+    import json
+    state, manager = _issuer(tmp_path)
+    real_datetime = datetime
+
+    class LaterDateTime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime.now(tz or timezone.utc) + timedelta(days=366)
+
+    monkeypatch.setattr(certs, "datetime", LaterDateTime)
+    assert manager.inspect().health == "expired-or-not-yet-valid"
+    with pytest.raises(Exception, match="publication-requires-matching-lineage"):
+        manager.stage()
+    line = selected_inspect(state, manager.policy)
+    result = json.loads(line[len(PREFIX):])
+    assert result["health"] == "expired-or-not-yet-valid"
+    assert result["issuer_verified"] is False
+    assert result["tls_ready"] is False
+
+
+def test_pending_stage_survives_fresh_manager_recovery_without_reissue(tmp_path, monkeypatch):
+    state, manager = _issuer(tmp_path)
+    original = pub._write
+
+    def fail_after_first(fd, name, data):
+        if name == "privkey.pem":
+            raise OSError("synthetic-crash-after-chain")
+        return original(fd, name, data)
+
+    monkeypatch.setattr(pub, "_write", fail_after_first)
+    with pytest.raises(OSError):
+        manager.stage()
+    monkeypatch.setattr(pub, "_write", original)
+    # New issuer process after reboot: issuer journal remains ready, yet the
+    # stage operation still cannot silently discard uncertain partial files.
+    new_process = CertificateManager(state, manager.policy, Runner(state))
+    assert new_process.inspect().health == "valid"
+    with pytest.raises(PolicyError, match="publication-pending-manual-recovery"):
+        new_process.stage()
+    assert len(list((state / "publications/station-web").glob(".pending-*"))) == 1
