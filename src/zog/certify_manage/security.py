@@ -102,4 +102,14 @@ def cloudflare_credential_snapshot(state: Path) -> str:
     raw = protected_file_read(state, Path("dns/cloudflare.ini"), 8192, private=True)
     if not re.fullmatch(rb"dns_cloudflare_api_token = [A-Za-z0-9_-]{20,4096}\n", raw):
         raise PolicyError("unsupported-cloudflare-credential-format")
-    return hashlib.sha256(raw).hexdigest()
+    after = path.lstat()
+    # Detect even a same-value atomic replacement or unexpected inode
+    # metadata update during this checked read, not only a changed token.
+    before_identity = (info.st_dev, info.st_ino, info.st_ctime_ns,
+                       info.st_mtime_ns, info.st_size)
+    after_identity = (after.st_dev, after.st_ino, after.st_ctime_ns,
+                      after.st_mtime_ns, after.st_size)
+    if before_identity != after_identity:
+        raise PolicyError("cloudflare-credential-changed")
+    binding = (":".join(str(v) for v in before_identity)).encode("ascii")
+    return hashlib.sha256(binding + b"\\0" + raw).hexdigest()
