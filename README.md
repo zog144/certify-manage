@@ -104,3 +104,7 @@ staging PEM material and interrupted private candidate publication. No
 browser/command-center vault access or nginx/public TLS readiness is
 provided by certify-manage. Native immutable Certbot, three-UID systemd,
 ACME staging and independent local HTTPS tests remain separate NO-GO gates.
+
+## Option B protected HTTPS Cloudflare credential consumer (2026-10-29)
+
+[Source-only consumer contract](docs/cloudflare-https-credential-consumer-v1.md) defines bounded nonsecret request/issuer-installed-receipt correlation for the reusable authenticated HTTPS delivery architecture. The actual root-owned HTTPS receiver, station vault broker, issuer file installation, native ACME and host-deploy nginx delivery remain independent gated operations. Certbot does **not** fetch secrets; it uses the existing protected issuer-only `dns/cloudflare.ini` file.
