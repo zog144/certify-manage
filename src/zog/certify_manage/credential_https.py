@@ -24,6 +24,12 @@ ROOT_APPROVAL_SCHEMA = "zog-issuer-cloudflare-credential-v1"
 ROOT_INSTALLED_SCHEMA = "zog-issuer-cloudflare-installation-v1"
 HOST_ADMISSION_SCHEMA = "zog-host-deploy-cross-host-issuer-admission-v1"
 OWNER_SCHEMA = "zog-host-deploy-certificate-owner-authority-v1"
+INSTALL_SCHEMA = "zog-certify-cloudflare-installed-owner-witness-v1"
+INSTALL_FIELDS = frozenset((
+    "schema host_id host_fingerprint installation_id state_volume_id registry_id "
+    "signer_pin_sha256 owner_authority_sha256 https_authority_pin_sha256 "
+    "issuer_grant_id issuer_storage_id issuer_uid issuer_gid software_view"
+).split())
 CLIENT_FIELDS = frozenset((
     "schema host_id host_fingerprint installation_id state_volume_id "
     "registry_id station_authority_sha256 owner_authority_sha256 "
@@ -107,6 +113,8 @@ class HttpsCloudflareSelection:
 
     def request(self, *, request_id: str, nonce: str) -> dict:
         _uuid(request_id)
+        if request_id == self.fields["assignment_id"]:
+            _deny()
         if type(nonce) is not str or _HEX32.fullmatch(nonce) is None:
             _deny()
         v = self.fields
@@ -142,7 +150,8 @@ class HttpsCloudflareSelection:
 
 
 def select_https_cloudflare(*, client: dict, admission: dict,
-                            root_approval: dict, issuer_policy: Authorization,
+                            root_approval: dict, installation: dict,
+                            issuer_policy: Authorization,
                             now: int) -> HttpsCloudflareSelection:
     """Require a current *upstream-authenticated* owner and root approval.
 
@@ -161,6 +170,12 @@ def select_https_cloudflare(*, client: dict, admission: dict,
                 or c["fqdn"] != issuer_policy.hostnames[0]):
             _deny()
         _zone(c["fqdn"], c["dns_zone"])
+        witness = _exact(installation, INSTALL_FIELDS)
+        if witness["schema"] != INSTALL_SCHEMA:
+            _deny()
+        for k in INSTALL_FIELDS - {"schema"}:
+            if witness[k] != c[k]:
+                _deny()
         for n in ("host_id", "installation_id", "state_volume_id", "assignment_id"):
             _uuid(c[n])
         for n in ("host_fingerprint", "station_authority_sha256",

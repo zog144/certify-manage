@@ -57,8 +57,15 @@ def fixture():
         "delivery_policy_sha256": "1" * 64,
         "installed_bytes_verified": False, "credential_transferred": False,
     }
+    installation = {key: client[key] for key in (
+        "host_id", "host_fingerprint", "installation_id", "state_volume_id",
+        "registry_id", "signer_pin_sha256", "owner_authority_sha256",
+        "https_authority_pin_sha256", "issuer_grant_id", "issuer_storage_id",
+        "issuer_uid", "issuer_gid", "software_view"
+    )}
+    installation["schema"] = "zog-certify-cloudflare-installed-owner-witness-v1"
     return {"client": client, "admission": admission, "root_approval": root,
-            "issuer_policy": auth, "now": NOW}
+            "installation": installation, "issuer_policy": auth, "now": NOW}
 
 def select(value=None):
     return select_https_cloudflare(**(value or fixture()))
@@ -103,6 +110,8 @@ def test_https_selection_is_purpose_scoped_nonsecret():
     ("root_approval", "grant_id", "0" * 32),
     ("root_approval", "receipt_sha256", "0" * 64),
     ("root_approval", "zone_name", "other.example.org"),
+    ("installation", "host_fingerprint", "0" * 64),
+    ("installation", "issuer_storage_id", "0" * 32),
 ])
 def test_stale_mismatched_foreign_or_ssh_client_denied(field,key,value):
     d = fixture()
@@ -111,7 +120,7 @@ def test_stale_mismatched_foreign_or_ssh_client_denied(field,key,value):
         select(d)
 
 def test_extra_selectors_and_secrets_denied():
-    for field in ("client", "root_approval", "admission"):
+    for field in ("client", "root_approval", "admission", "installation"):
         d = fixture()
         d[field]["token"] = "must-not-be-accepted"
         with pytest.raises(CloudflareDeliveryDenied):
@@ -160,10 +169,7 @@ def test_installed_root_ledger_correlated_but_not_https_or_tls_ready():
 
 def test_request_does_not_allow_replay_id_or_nonce_from_issuer_or_http_ui():
     s = select()
-    for id, nonce in [(u(8), "g" * 32), ("bad", "a" * 32)]:
-        if id == u(8):
-            with pytest.raises(CloudflareDeliveryDenied):
-                s.request(request_id=id, nonce=nonce)
-        else:
-            with pytest.raises(CloudflareDeliveryDenied):
-                s.request(request_id=id, nonce=nonce)
+    for request_id, nonce in ((u(8), "a" * 32), (u(9), "g" * 32),
+                              ("bad", "a" * 32)):
+        with pytest.raises(CloudflareDeliveryDenied):
+            s.request(request_id=request_id, nonce=nonce)
