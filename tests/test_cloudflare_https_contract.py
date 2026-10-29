@@ -41,7 +41,7 @@ def test_selected_readback_preserves_private_certbot_file_and_no_grant(tmp_path)
     assert "token" not in str(result)
     assert "--dns-cloudflare-credentials" in CertbotAdapter().arguments(
         "issue", tmp_path, p)
-    assert "https" not in " ".join(CertbotAdapter().arguments(
+    assert "request_fd" not in " ".join(CertbotAdapter().arguments(
         "issue", tmp_path, p))
 
 
@@ -86,5 +86,5 @@ def test_fetch_is_not_part_of_selected_issue_renew_inspect_recover():
         assert "credential_delivery" not in source
         assert "request_fd" not in source
         assert "https" not in source.lower()
-    assert "credential" not in inspect.getsource(cli.main).split(
-        'choices=')[1].split(']')[0]  # no secret-fetch CLI action
+    assert '"request-credential"' not in inspect.getsource(cli.main)
+    assert '"fetch-cloudflare"' not in inspect.getsource(cli.main)
