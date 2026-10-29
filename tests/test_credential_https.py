@@ -136,7 +136,6 @@ def test_installed_root_ledger_correlated_but_not_https_or_tls_ready():
     s = select(f)
     root = {**f["root_approval"], "schema": "zog-issuer-cloudflare-installation-v1",
             "status": "installed", "installed_at": NOW - 30}
-    root.pop("state")
     inspect = {
         "schema": root["schema"], "status": "installed",
         "assignment_revision": root["assignment_revision"],

@@ -238,7 +238,7 @@ def check_installed_credential(selection: HttpsCloudflareSelection, *,
             _deny()
         c = selection.fields
         approval_fields = frozenset((
-            "schema status project certificate_id assignment_id assignment_revision "
+            "schema state status project certificate_id assignment_id assignment_revision "
             "credential_id credential_revision zone_id zone_name grant_id storage_id "
             "policy_sha256 receipt_sha256 expires_at installed_at"
         ).split())
@@ -246,7 +246,7 @@ def check_installed_credential(selection: HttpsCloudflareSelection, *,
         i = _exact(root_inspection, frozenset((
             "schema status assignment_revision credential_revision grant_id storage_id"
         ).split()))
-        if (r["schema"] != ROOT_INSTALLED_SCHEMA or r["status"] != "installed"
+        if (r["schema"] != ROOT_INSTALLED_SCHEMA or r["state"] != "approved" or r["status"] != "installed"
                 or i["schema"] != ROOT_INSTALLED_SCHEMA or i["status"] != "installed"
                 or type(now) is not int or now <= 0
                 or type(r["expires_at"]) is not int or r["expires_at"] <= now
