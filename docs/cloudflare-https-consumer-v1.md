@@ -48,3 +48,12 @@ The issuer's existing `issue`, `renew`, `inspect`, `recover` and `stage` source 
 **station-access / host-discover:** independently authenticate the managed FQDN assignment, DNS owner and station Credential Authority; attest its key and grant through independently approved pins. No issuer-side authority derivation from a beacon.
 
 **Work:** real root-owned HTTPS/token transfer and separate native immutable Certbot/Cloudflare-plugin/ACME staging, selected InvocationID inspection and nginx/SNI/CA acceptance remain **NOT RUN / NO-GO**.
+
+
+## Review-branch integration caution
+
+At this review checkpoint the PR #3 source branch is **diverged** from `unstable` and does not contain the earlier `src/zog/certify_manage/credential_https.py` source-selection helper. That earlier `unstable` helper still uses the *noncanonical* purpose `certify-manage-dns-cloudflare` in its non-wire selection summary, whereas the canonical `host-identify` and reviewed host-deploy PR #6 contract require `issuer-cloudflare-dns01`. It also uses `host-nginx-https` as the **certificate publication consumer**, which must not be mistaken for the canonical **credential consumer** `certify-manage`.
+
+**Do not treat the old `zog-certify-cloudflare-https-request-v1` summary as a valid canonical `zog-credential-request-v1` HTTP body.** Before any source integration/merge, the controller/host-deploy owner must harmonize that legacy selector to the canonical purpose, select the approved credential consumer separately from the nginx publication consumer, and reproduce the exact nonsecret signed request/response checks. No silent import of the missing helper or source history rewrite is approved by this PR review.
+
+This source pass remains a **review-only, fail-closed readback**; no standalone HTTPS network client or new credential-install API has been introduced.
