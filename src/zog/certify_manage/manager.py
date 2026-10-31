@@ -116,12 +116,15 @@ class CertificateManager:
             return replace(status, operation=obj.get("operation"), outcome=obj.get("outcome"))
         return status
 
-    def _record(self, operation: str, status: str, fingerprint: str | None = None, account_id: str | None = None, outcome: str | None = None) -> None:
+    def _record(self, operation: str, status: str, fingerprint: str | None = None, account_id: str | None = None, outcome: str | None = None) -> str:
+        updated_at = datetime.now(timezone.utc).isoformat()
         _save(self._record_path(), {"schema": "zog-certify-operation-v1",
              "policy_sha256": self.policy.fingerprint, "operation": operation,
              "status": status, "certificate_fingerprint": fingerprint,
              "account_id": account_id, "outcome": outcome,
-             "updated_at": datetime.now(timezone.utc).isoformat()})
+             "updated_at": updated_at})
+        # Return only after the operation record was durably committed.
+        return updated_at
 
     def _execute(self, operation: str) -> CertificateStatus:
         with self._locked():
@@ -174,8 +177,11 @@ class CertificateManager:
             outcome = ("issued" if operation == "issue" else
                        "renewed" if after.fingerprint_sha256 != before.fingerprint_sha256
                        else "unchanged")
-            self._record(operation, "ready", after.fingerprint_sha256, account_after, outcome)
-            return replace(after, operation=operation, outcome=outcome)
+            updated_at = self._record(operation, "ready", after.fingerprint_sha256,
+                                      account_after, outcome)
+            return replace(after, operation=operation, outcome=outcome,
+                           policy_sha256=self.policy.fingerprint,
+                           operation_updated_at=updated_at)
 
     def stage(self) -> dict:
         """Stage verified issuer-private material; does not export or reload."""
@@ -224,6 +230,8 @@ class CertificateManager:
                 raise CertificateError("issue-baseline-conflict")
             if old["operation"] == "renew" and not old.get("certificate_fingerprint"):
                 raise CertificateError("renewal-baseline-missing")
-            self._record("recover", "ready", current.fingerprint_sha256,
-                         account, "recovered-unverified")
-            return replace(current, operation="recover", outcome="recovered-unverified")
+            updated_at = self._record("recover", "ready", current.fingerprint_sha256,
+                                      account, "recovered-unverified")
+            return replace(current, operation="recover", outcome="recovered-unverified",
+                           policy_sha256=self.policy.fingerprint,
+                           operation_updated_at=updated_at)
