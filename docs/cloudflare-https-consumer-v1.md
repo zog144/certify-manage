@@ -1,35 +1,46 @@
-# Certify-manage Cloudflare HTTPS consumer contract (Option B)
+# Cloudflare HTTPS v1: issuer-side private credential readback
 
-2026-10-29 · draft certify-manage PR #3 · host-deploy draft PR #6
+**2026-10-31 — certify-manage PR #3 (source-only).** This source does not fetch or install credentials, authorize Certbot, issue certificates or publish nginx.
 
-The **Enrolled Host's protected root owner**, not certify-manage and not a
-browser, requests a Cloudflare DNS-01 credential from the Command-Center
-Host's common authenticated HTTPS Credential Authority on port 443.
-The issuer uses the existing Certbot `dns-cloudflare` authenticator and
-issuer-owned `/var/lib/zog-certify-manage/dns/cloudflare.ini`.
+## Canonical protocol and owners
 
-The source-only `cloudflare_https_contract.verify_installed` reads the
-root-installed authorization and installation receipt, checks current
-certificate ID, exact one-hostname FQDN, DNS zone, issuer UID, assignment
-and credential revision, then checks the existing private 0600 file using
-`cloudflare_credential_snapshot`. It returns only a nonsecret observation.
-It does not grant `issue`/`renew`, access transport, execute Certbot,
-update Cloudflare or publish nginx output.
+Use **`zog.host_identify.credential_delivery`**, source pin `host-identify@4a176373ff4cb47a66a8ab1b5fd3d6ff01ff2a3b`, not a second HTTPS protocol. The authenticated exchange consists of:
 
-The actual root-to-issuer installation remains
-`root_control.issuer_credentials.install_from_fd`, with protected 0700
-STATE, dedicated UID/GID, nonsecret pending/installed ledger, one-time
-request admission and 0600 atomic file replacement. Selected Certbot
-operation admission and existing saved renewal account/lineage/credential
-snapshot checks remain mandatory.
+- `zog-credential-authorization-v1` with independently verified Credential Authority Ed25519 signature, monotonic revision, expiry and revocation; exact `host_id`, `host_fingerprint`, `installation_id`, `state_volume_id`, `registry_id`, consumer `certify-manage`, purpose `issuer-cloudflare-dns01`, and credential ID/revision.
+- `zog-credential-request-v1` signed by the HostIdentity (separate persistent operation request ID and ≤120-second lifetime). The selected HTTPS receiver verifies TLS authority, exact Host and authorization, persistent HTTP nonce and request ledger, and independently approved hostname / zone.
+- `zog-credential-delivery-v1` is Credential Authority-signed with a ≤120-second delivery lifetime. Only the root-owned receiver may process token bytes, via a private FD to **existing** `root_control.issuer_credentials.install_from_fd`. No Certbot CLI invocation, browser, web application or ordinary host-discover process may fetch or install the token.
+- `zog-credential-installation-receipt-v1` is signed by the HostIdentity **after** root-owned installation. The request/delivery/receipt IDs and persistent ledger must have been independently verified by host-identify before being passed to the readback. Delivery without an installed receipt is uncertain; redelivery without recovery or rotation is forbidden.
 
-Explicit `host-deploy` HTTPS consumer selection must verify the current
-signed assignment, HostIdentity/installation/STATE, second owner ledger,
-station HTTPS trust, FQDN/zone/credential revision and protected issuer
-grant before and after one bounded anonymous-FD transfer. It must never
-request a new token simply because Certbot was retried or renewal failed.
+The exact receiving Host/STATE, signed certificate assignment and second owner ledger are validated and installed by host-install and host-deploy PRs #3/#6. The issuer module does **not** duplicate their signer verification or pretend that an arbitrary JSON dictionary is a trusted signed assignment.
 
-No token in argv/environment/journald/JSON, source repository, browser
-response or HTTP diagnostic. The native HTTPS client and protected receiver,
-actual dual-host authorization, token delivery, DNS/ACME and nginx
-execution are **not performed** or authorized by this source change.
+## Issuer source boundary
+
+`cloudflare_https_contract.verify_installed(state, policy, *, approved, installed, root_inspection, owner, canonical_authorization, canonical_receipt, installation, issuer_uid, now)` is a **read-only correlation check**. Its arguments must originate from root-owned protected inodes, active signed owner/assignment checks and the canonical verified HTTPS protocol; none can be accepted from request JSON, an unprivileged caller, an issuer application launch or a mere station browser response.
+
+It requires simultaneously:
+
+- current `zog-issuer-cloudflare-credential-v1` root-approved authorization and exact actual `zog-issuer-cloudflare-installation-v1` installed ledger, with the same field values, expiry, grant/storage/assignment/credential revisions; distinct root inspection must agree;
+- root-installed `zog-host-deploy-certificate-owner-authority-v1` with managed `signed-host-discover` provenance, approved/non-revoked current revision, exact certificate/FQDN/policy fingerprint/challenge, DNS zone and Cloudflare credential ID/revision;
+- independent installed Host/installation/STATE/registry witness, owner receipt digest, policy fingerprint, original root grant/storage and the actual **nonroot** issuer UID, not an invented software-layer UID;
+- current independently verified `zog-credential-authorization-v1` and signed `zog-credential-installation-receipt-v1` with **exact** common binding, credential revision, authorization ID/revision, installed outcome, original request, delivery and receipt UUIDs, and safe timestamps;
+- exact DNS-01 single FQDN below the approved zone and the existing issuer-owned `dns/cloudflare.ini` (dedicated UID, 0700 parent, 0600 regular non-symlink, bounded single API-token line, protected anchored descriptor read). It does **not** return token bytes or any credential digest.
+
+The returned status is `issuer-private-file-source-correlated` with `can_issue=false`, `can_renew=false`, `tls_ready=false` and `requires_selected_controller_admission=true`. This is **not** a signed installation receipt, proof of installed token origin, evidence of no same-revision file swap, or an acceptable input for unattended renewal.
+
+Root-control's selected-program admission and durable state, actual original installer ledger, private FD, current mounted STATE, grant and quiescence remain mandatory. Its installed receipt does not presently record canonical `request_id`/`delivery_id` or a separately attested immutable private-file generation. The protected receiver must correlate those in **its own current ledger and exact installed-byte checks**, not infer them from the issuer's successful file readback. A same-revision replacement of an otherwise valid private token file is undetectable from the existing secret-free root ledger alone; the positive source fixture explicitly demonstrates that limitation. The issuer's before/after Certbot snapshot still protects renewal against changes *during* an operation, but it cannot authenticate the token's original transfer.
+
+## Rotation / denial tests
+
+`tests/test_cloudflare_https_contract.py` uses synthetic non-live token bytes to reject stale/expired/revoked root authorization, mismatched saved root install and inspection, conflicting signed owner/assignment revision, wrong policy digest, partial-zone confusion, Host/STATE/issuer UID/grant/storage drift, wrong canonical consumer/purpose, credential/revision conflict and receipt that is not installed. Symlink, missing, wrong-mode, unsafe-parent and extra-secret-key inputs fail closed.
+
+The issuer's existing `issue`, `renew`, `inspect`, `recover` and `stage` source remain untouched: **no implicit HTTPS token refresh on retries or certificate operations**. Keep staged PEM fingerprint and HTTPS nginx publication outside this source pass.
+
+## Remaining acceptance gates
+
+**host-deploy Regular:** re-review PR #6's current HTTPS client `zog-issuer-https-credential-client-v1` and signed owner/ledger/delivery checks. Bind canonical `issuer-cloudflare-dns01` purpose, root receiver, exact installed Host/STATE witness and persistent original request/delivery IDs; do not equate a JSON receipt with validated Ed25519 signatures.
+
+**root-control / host-install Regular:** authenticate and persist canonical HTTPS v1 approvals, signatures, nonce/replay, installed-byte/RECORD, quiescence and private-file generation, and correlate it with the exact root installer ledger across reboot and rotation. Require current assignment, root-owner policy and protected grant before and after delivery/install.
+
+**station-access / host-discover:** independently authenticate the managed FQDN assignment, DNS owner and station Credential Authority; attest its key and grant through independently approved pins. No issuer-side authority derivation from a beacon.
+
+**Work:** real root-owned HTTPS/token transfer and separate native immutable Certbot/Cloudflare-plugin/ACME staging, selected InvocationID inspection and nginx/SNI/CA acceptance remain **NOT RUN / NO-GO**.
