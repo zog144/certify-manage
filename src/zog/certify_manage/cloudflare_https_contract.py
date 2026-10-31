@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 import re
 
@@ -94,6 +95,40 @@ def _zone(name, zone):
         _deny()
 
 
+def _private_file_generation(state: Path) -> str:
+    """Nonsecret inode-generation identity; never a digest of token bytes.
+
+    Root-control must compute/persist this *separately* after its protected FD
+    installer commits, while holding the issuer owner lock. This readback
+    merely compares the current descriptor's metadata with that trusted pin.
+    """
+    state_fd = dns_fd = secret_fd = None
+    try:
+        state_fd = os.open(state, os.O_RDONLY | os.O_DIRECTORY |
+                          os.O_NOFOLLOW | os.O_CLOEXEC)
+        dns_fd = os.open("dns", os.O_RDONLY | os.O_DIRECTORY |
+                         os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=state_fd)
+        secret_fd = os.open("cloudflare.ini", os.O_RDONLY |
+                            os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dns_fd)
+        info = os.fstat(secret_fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o600):
+            _deny()
+        identity = (
+            info.st_dev, info.st_ino, info.st_uid, info.st_gid,
+            stat.S_IMODE(info.st_mode), info.st_ctime_ns,
+            info.st_mtime_ns, info.st_size,
+        )
+        return hashlib.sha256(
+            (":".join(map(str, identity))).encode("ascii")
+        ).hexdigest()
+    finally:
+        for descriptor in (secret_fd, dns_fd, state_fd):
+            if descriptor is not None:
+                os.close(descriptor)
+
+
 def verify_installed(state: Path, policy: Authorization, *, approved: dict,
                      installed: dict, root_inspection: dict, owner: dict,
                      canonical_authorization: dict, canonical_receipt: dict,
@@ -115,7 +150,7 @@ def verify_installed(state: Path, policy: Authorization, *, approved: dict,
         binding = _exact(installation, _BINDING | frozenset((
             "issuer_uid issuer_gid issuer_grant_id issuer_storage_id "
             "assignment_id assignment_revision assignment_receipt_sha256 "
-            "owner_authority_sha256 policy_sha256"
+            "owner_authority_sha256 policy_sha256 file_generation_sha256"
         ).split()))
         if (type(now) is not int or now <= 0
                 or type(issuer_uid) is not int or issuer_uid < 1000
@@ -188,7 +223,8 @@ def verify_installed(state: Path, policy: Authorization, *, approved: dict,
             if type(binding[key]) is not str or _UUID.fullmatch(binding[key]) is None:
                 _deny()
         for key in ("host_fingerprint", "assignment_receipt_sha256",
-                    "owner_authority_sha256", "policy_sha256"):
+                    "owner_authority_sha256", "policy_sha256",
+                    "file_generation_sha256"):
             _valid_id(binding[key])
         if (type(binding["registry_id"]) is not str
                 or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", binding["registry_id"])):
@@ -226,7 +262,11 @@ def verify_installed(state: Path, policy: Authorization, *, approved: dict,
         # Only the issuer UID can read its actual private STATE file; no
         # returned token, digest or issuer readiness claim.  Existing
         # operation locks and root-owned certificate policy remain separate.
+        observed_generation = _private_file_generation(state)
         cloudflare_credential_snapshot(state)
+        if (_private_file_generation(state) != observed_generation
+                or binding["file_generation_sha256"] != observed_generation):
+            _deny()
         return {
             "schema": SCHEMA, "status": "issuer-private-file-source-correlated",
             "certificate_id": policy.certificate_id,
