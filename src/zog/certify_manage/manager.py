@@ -109,7 +109,8 @@ class CertificateManager:
         if obj:
             detail = obj.get("status")
             if detail == "uncertain":
-                return replace(status, health="uncertain", operation=obj.get("operation"), detail="operator-recovery-required")
+                return replace(status, health="uncertain", operation=obj.get("operation"),
+                               outcome=obj.get("outcome"), detail="operator-recovery-required")
             if detail == "failed":
                 return replace(status, operation=obj.get("operation"), detail="last-operation-failed", outcome="failed")
             return replace(status, operation=obj.get("operation"), outcome=obj.get("outcome"))
@@ -148,6 +149,12 @@ class CertificateManager:
             # preflight uncertainty until the owner reconciles the lineage.
             code = self.adapter.run(args)
             if type(code) is not int or code != 0:
+                # A known nonzero result is reportable, but ACME may have
+                # changed the lineage before the process failed.  Preserve
+                # the original uncertain state and block automatic retries.
+                # A lost reply/timeout still has outcome=None instead.
+                self._record(operation, "uncertain", before.fingerprint_sha256,
+                             account_before, "failed")
                 raise UncertainOperation("certbot-outcome-unproven")
             if token_digest is not None:
                 try:
