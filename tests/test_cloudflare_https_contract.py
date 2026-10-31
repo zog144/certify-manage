@@ -235,6 +235,16 @@ def test_file_symlink_missing_group_mode_or_wrong_directory_denied(tmp_path):
     with pytest.raises(PolicyError):
         accepted(args)
 
+
+def test_private_credential_fifo_is_rejected_without_blocking(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    args, target = fixture(tmp_path)
+    target.unlink()
+    os.mkfifo(target, 0o600)
+    with pytest.raises(PolicyError, match="cloudflare-https-installed"):
+        accepted(args)
+
 def test_replaced_credential_bytes_require_new_root_installation_witness(tmp_path):
     # The old root ledger alone cannot distinguish same-revision swaps.
     # The newly root-installed, nonsecret inode-generation witness does so,
