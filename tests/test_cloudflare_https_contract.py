@@ -194,7 +194,9 @@ def test_extra_fields_and_untrusted_tokens_are_never_accepted(tmp_path):
         pytest.skip("requires an unprivileged issuer uid")
     for field in ("approved", "installed", "root_inspection", "owner",
                   "installation", "canonical_authorization", "canonical_receipt"):
-        args, _ = fixture(tmp_path)
+        target_root = tmp_path / field
+        target_root.mkdir(mode=0o700)
+        args, _ = fixture(target_root)
         args[field]["cloudflare_api_token"] = "synthetic-test-only"
         with pytest.raises(PolicyError, match="cloudflare-https-installed"):
             accepted(args)
