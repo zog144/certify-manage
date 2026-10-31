@@ -15,7 +15,7 @@ import pytest
 from zog.certify_manage.model import Authorization, PolicyError
 from zog.certify_manage.cloudflare_https_contract import (
     AUTH_SCHEMA, CANONICAL_AUTH_SCHEMA, CANONICAL_RECEIPT_SCHEMA,
-    OWNER_SCHEMA, RECEIPT_SCHEMA, SCHEMA, verify_installed,
+    OWNER_SCHEMA, RECEIPT_SCHEMA, SCHEMA, _private_file_generation, verify_installed,
 )
 from zog.certify_manage.adapter import CertbotAdapter
 from test_model import policy
@@ -80,6 +80,7 @@ def fixture(tmp_path):
         "assignment_receipt_sha256": root["receipt_sha256"],
         "owner_authority_sha256": digest(owner),
         "policy_sha256": p.fingerprint,
+        "file_generation_sha256": _private_file_generation(tmp_path),
     }
     common = {
         k: binding[k] for k in (
@@ -166,6 +167,7 @@ def test_source_correlated_readback_not_issuer_or_transport_success(tmp_path):
     ("installation", "owner_authority_sha256", "0" * 64),
     ("installation", "assignment_receipt_sha256", "0" * 64),
     ("installation", "purpose", "station-access-password"),
+    ("installation", "file_generation_sha256", "0" * 64),
     ("installation", "consumer", "host-nginx-https"),
     ("canonical_authorization", "schema", "unreviewed"),
     ("canonical_authorization", "status", "revoked"),
@@ -233,11 +235,10 @@ def test_file_symlink_missing_group_mode_or_wrong_directory_denied(tmp_path):
     with pytest.raises(PolicyError):
         accepted(args)
 
-def test_replaced_credential_bytes_do_not_change_signed_receipt_truth(tmp_path):
-    # This readback correlates protected file ownership, not the token's
-    # *identity*. The root receiver must enforce its original durable request
-    # and prevent concurrent replacement. Issuer's renew snapshots before
-    # and after Certbot separately detect an intervening change.
+def test_replaced_credential_bytes_require_new_root_installation_witness(tmp_path):
+    # The old root ledger alone cannot distinguish same-revision swaps.
+    # The newly root-installed, nonsecret inode-generation witness does so,
+    # without storing a reusable token hash in the canonical HTTPS ledger.
     if os.geteuid() == 0:
         pytest.skip("requires an unprivileged issuer uid")
     args, target = fixture(tmp_path)
@@ -246,7 +247,12 @@ def test_replaced_credential_bytes_do_not_change_signed_receipt_truth(tmp_path):
     temp.write_bytes(b"dns_cloudflare_api_token = " + b"y"*24 + b"\n")
     temp.chmod(0o600)
     os.replace(temp, target)
-    assert accepted(args) == before
+    with pytest.raises(PolicyError, match="cloudflare-https-installed"):
+        accepted(args)
+    assert before["can_issue"] is False
+    # An actual authorized new rotation requires a new approved credential
+    # revision, a new root install ledger and a new signed canonical delivery;
+    # this test deliberately cannot manufacture an approval from new metadata.
 
 def test_automatic_issue_renew_inspect_and_recover_do_not_invoke_https():
     import inspect
