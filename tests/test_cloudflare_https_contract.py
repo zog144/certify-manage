@@ -264,6 +264,21 @@ def test_replaced_credential_bytes_require_new_root_installation_witness(tmp_pat
     # revision, a new root install ledger and a new signed canonical delivery;
     # this test deliberately cannot manufacture an approval from new metadata.
 
+
+def test_identical_token_atomic_replacement_rejects_old_file_generation(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    args, target = fixture(tmp_path)
+    assert accepted(args)["can_renew"] is False
+    old_identity = args["installation"]["file_generation_sha256"]
+    new_path = target.parent / ".same-bytes-replacement"
+    new_path.write_bytes(target.read_bytes())
+    new_path.chmod(0o600)
+    os.replace(new_path, target)
+    assert _private_file_generation(args["state"]) != old_identity
+    with pytest.raises(PolicyError, match="cloudflare-https-installed"):
+        accepted(args)
+
 def test_automatic_issue_renew_inspect_and_recover_do_not_invoke_https():
     import inspect
     from zog.certify_manage.manager import CertificateManager
