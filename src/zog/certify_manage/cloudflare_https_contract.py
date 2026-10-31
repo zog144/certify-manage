@@ -220,7 +220,7 @@ def verify_installed(state: Path, policy: Authorization, *, approved: dict,
                 _deny()
         # Do not accept synthetically advanced root ledger in place of
         # the exact signed delivery/installer transaction.
-        if cr["installed_at"] > i["installed_at"] + 5:
+        if cr["installed_at"] < i["installed_at"]:
             _deny()
 
         # Only the issuer UID can read its actual private STATE file; no
