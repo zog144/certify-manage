@@ -108,7 +108,7 @@ def _private_file_generation(state: Path) -> str:
                           os.O_NOFOLLOW | os.O_CLOEXEC)
         dns_fd = os.open("dns", os.O_RDONLY | os.O_DIRECTORY |
                          os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=state_fd)
-        secret_fd = os.open("cloudflare.ini", os.O_RDONLY |
+        secret_fd = os.open("cloudflare.ini", os.O_RDONLY | os.O_NONBLOCK |
                             os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=dns_fd)
         info = os.fstat(secret_fd)
         if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
