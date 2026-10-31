@@ -120,7 +120,7 @@ def verify_installed(state: Path, policy: Authorization, *, approved: dict,
         if (type(now) is not int or now <= 0
                 or type(issuer_uid) is not int or issuer_uid < 1000
                 or issuer_uid != os.geteuid()
-                or type(state) is not Path or not state.is_absolute()
+                or not isinstance(state, Path) or not state.is_absolute()
                 or not isinstance(policy, Authorization)
                 or policy.challenge != "dns-01" or policy.dns_plugin != "dns-cloudflare"
                 or len(policy.hostnames) != 1):
