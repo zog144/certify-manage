@@ -1,90 +1,259 @@
-"""Selected issuer readback of root-installed Cloudflare token, no fetch."""
-from pathlib import Path
+"""Cloudflare HTTPS v1 readback against independent root/owner protocol facts.
+
+All tests are source-only, with synthetic non-live credentials. The shared
+host-identify signature/ledger checker and root-control protected open happen
+*before* this readback in a real installation.
+"""
 import copy
+import hashlib
+import json
+import os
+import uuid
 
 import pytest
+
 from zog.certify_manage.model import Authorization, PolicyError
-from zog.certify_manage.cloudflare_https_contract import verify_installed, SCHEMA, RECEIPT_SCHEMA
+from zog.certify_manage.cloudflare_https_contract import (
+    AUTH_SCHEMA, CANONICAL_AUTH_SCHEMA, CANONICAL_RECEIPT_SCHEMA,
+    OWNER_SCHEMA, RECEIPT_SCHEMA, SCHEMA, verify_installed,
+)
 from zog.certify_manage.adapter import CertbotAdapter
 from test_model import policy
 
+NOW = 1793500000
+
+def ident(n):
+    return str(uuid.UUID("00000000-0000-4000-8000-" + format(n, "012x")))
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                      ensure_ascii=True).encode("ascii")).hexdigest()
 
 def fixture(tmp_path):
-    p = Authorization.from_dict(policy(
-        challenge="dns-01", dns_plugin="dns-cloudflare"))
+    p = Authorization.from_dict(policy(challenge="dns-01", dns_plugin="dns-cloudflare"))
     dns = tmp_path / "dns"
     dns.mkdir(mode=0o700)
     target = dns / "cloudflare.ini"
-    # Test-only dummy, never an actual Cloudflare credential.
-    target.write_bytes(b"dns_cloudflare_api_token = " + b"x"*24 + b"\n")
+    target.write_bytes(b"dns_cloudflare_api_token = " + b"x" * 24 + b"\n")
     target.chmod(0o600)
-    approved = {
-        "schema": SCHEMA, "certificate_id": p.certificate_id,
-        "hostnames": list(p.hostnames), "dns_zone": "example.org",
-        "credential_id": "cloudflare-approved",
-        "credential_revision": 7, "assignment_revision": 3,
-        "grant_id": "a"*32, "storage_id": "b"*32,
-        "issuer_uid": 28001, "policy_sha256": "c"*64,
+
+    credential = ident(7)
+    owner = {
+        "schema": OWNER_SCHEMA, "origin": "managed",
+        "verified_by": "signed-host-discover",
+        "host_id": ident(1), "installation_id": ident(2),
+        "operation_id": ident(3), "revision": 3, "status": "approved",
+        "approved_at": NOW - 200, "expires_at": NOW + 1800,
+        "revoked_at": None, "certificate_id": p.certificate_id,
+        "service_id": "candidate-nginx", "hostnames": list(p.hostnames),
+        "policy_sha256": p.fingerprint, "challenge": "dns-01",
+        "dns_mode": "local-cloudflare", "dns_zone": "example.org",
+        "credential_id": "cloudflare-" + credential.replace("-", ""),
+        "credential_revision": 7,
     }
-    installed = {"schema": RECEIPT_SCHEMA, "status": "installed",
-                 "credential_revision": 7, "assignment_revision": 3}
-    return p, approved, installed, target
+    root = {
+        "schema": AUTH_SCHEMA, "state": "approved", "project": "/protected/project",
+        "certificate_id": p.certificate_id, "assignment_id": ident(8),
+        "assignment_revision": 3, "credential_id": credential,
+        "credential_revision": 7, "zone_id": "zone7", "zone_name": "example.org",
+        "grant_id": "a" * 32, "storage_id": "b" * 32,
+        "policy_sha256": p.fingerprint, "receipt_sha256": "c" * 64,
+        "expires_at": NOW + 1700,
+    }
+    installed = {**root, "schema": RECEIPT_SCHEMA,
+                 "status": "installed", "installed_at": NOW - 90}
+    inspection = {
+        "schema": RECEIPT_SCHEMA, "status": "installed",
+        "assignment_revision": 3, "credential_revision": 7,
+        "grant_id": root["grant_id"], "storage_id": root["storage_id"],
+    }
+    binding = {
+        "host_id": owner["host_id"], "host_fingerprint": "d" * 64,
+        "installation_id": owner["installation_id"],
+        "state_volume_id": ident(4), "registry_id": "station-registry",
+        "consumer": "certify-manage", "purpose": "issuer-cloudflare-dns01",
+        "credential_id": owner["credential_id"],
+        "issuer_uid": os.geteuid(), "issuer_gid": os.getegid(),
+        "issuer_grant_id": root["grant_id"], "issuer_storage_id": root["storage_id"],
+        "assignment_id": root["assignment_id"],
+        "assignment_revision": root["assignment_revision"],
+        "assignment_receipt_sha256": root["receipt_sha256"],
+        "owner_authority_sha256": digest(owner),
+        "policy_sha256": p.fingerprint,
+    }
+    common = {
+        k: binding[k] for k in (
+            "host_id", "host_fingerprint", "installation_id", "state_volume_id",
+            "registry_id", "consumer", "purpose", "credential_id")
+    }
+    canonical_auth = {
+        **common, "schema": CANONICAL_AUTH_SCHEMA,
+        "issuer": "https://credential-authority.example.org",
+        "credential_revision": 7, "authorization_id": ident(11),
+        "revision": 5, "status": "approved", "approved_at": NOW - 300,
+        "revoked_at": None, "expires_at": NOW + 1600,
+    }
+    canonical_receipt = {
+        **common, "schema": CANONICAL_RECEIPT_SCHEMA,
+        "credential_revision": 7, "authorization_id": canonical_auth["authorization_id"],
+        "authorization_revision": 5, "request_id": ident(12),
+        "delivery_id": ident(13), "receipt_id": ident(14),
+        "outcome": "installed", "installed_at": NOW - 80,
+    }
+    args = dict(
+        state=tmp_path, policy=p, approved=root, installed=installed,
+        root_inspection=inspection, owner=owner,
+        canonical_authorization=canonical_auth,
+        canonical_receipt=canonical_receipt,
+        installation=binding, issuer_uid=os.geteuid(), now=NOW,
+    )
+    return args, target
 
+def accepted(args):
+    return verify_installed(**args)
 
-def test_selected_readback_preserves_private_certbot_file_and_no_grant(tmp_path):
-    p, approved, installed, target = fixture(tmp_path)
-    result = verify_installed(tmp_path, p, approved=approved,
-                              installed=installed, issuer_uid=28001)
-    assert result["status"] == "issuer-private-file-current"
-    assert result["requires_selected_controller_admission"] is True
-    assert not result["can_issue"] and not result["can_renew"]
+def test_source_correlated_readback_not_issuer_or_transport_success(tmp_path):
+    args, target = fixture(tmp_path)
+    # The source-only fixture's active euid must be a nonroot issuer.
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    result = accepted(args)
+    assert result == {
+        "schema": SCHEMA, "status": "issuer-private-file-source-correlated",
+        "certificate_id": "station-web", "credential_revision": 7,
+        "assignment_revision": 3, "can_issue": False,
+        "can_renew": False, "tls_ready": False,
+        "requires_selected_controller_admission": True,
+    }
     assert "token" not in str(result)
     assert "--dns-cloudflare-credentials" in CertbotAdapter().arguments(
-        "issue", tmp_path, p)
+        "issue", args["state"], args["policy"])
     assert "request_fd" not in " ".join(CertbotAdapter().arguments(
-        "issue", tmp_path, p))
+        "issue", args["state"], args["policy"]))
 
-
-@pytest.mark.parametrize("place,key,value", [
-    ("approved","credential_revision",8),
-    ("approved","assignment_revision",4),
-    ("approved","issuer_uid",0),
-    ("approved","dns_zone","another.example.org"),
-    ("approved","certificate_id","foreign"),
-    ("approved","policy_sha256","bad"),
-    ("installed","credential_revision",8),
-    ("installed","assignment_revision",4),
-    ("installed","status","blocked"),
+@pytest.mark.parametrize("component,key,value", [
+    ("approved", "policy_sha256", "f" * 64),
+    ("approved", "grant_id", "0" * 32),
+    ("approved", "storage_id", "0" * 32),
+    ("approved", "receipt_sha256", "0" * 64),
+    ("approved", "assignment_revision", 4),
+    ("approved", "credential_revision", 8),
+    ("approved", "zone_name", "ample.org"),
+    ("approved", "zone_name", "other.example.org"),
+    ("approved", "state", "revoked"),
+    ("approved", "expires_at", NOW),
+    ("installed", "status", "pending"),
+    ("installed", "credential_revision", 8),
+    ("installed", "assignment_revision", 2),
+    ("installed", "grant_id", "0" * 32),
+    ("installed", "installed_at", NOW + 400),
+    ("root_inspection", "credential_revision", 8),
+    ("root_inspection", "status", "blocked"),
+    ("owner", "verified_by", "browser-proposal"),
+    ("owner", "status", "revoked"),
+    ("owner", "expires_at", NOW),
+    ("owner", "revoked_at", NOW - 1),
+    ("owner", "revision", 4),
+    ("owner", "hostnames", ["foreign.example.org"]),
+    ("owner", "dns_zone", "other.example.org"),
+    ("owner", "credential_revision", 9),
+    ("owner", "policy_sha256", "0" * 64),
+    ("owner", "host_id", ident(77)),
+    ("installation", "state_volume_id", "not-a-uuid"),
+    ("installation", "issuer_storage_id", "0" * 32),
+    ("installation", "issuer_grant_id", "0" * 32),
+    ("installation", "issuer_uid", 0),
+    ("installation", "owner_authority_sha256", "0" * 64),
+    ("installation", "assignment_receipt_sha256", "0" * 64),
+    ("installation", "purpose", "station-access-password"),
+    ("installation", "consumer", "host-nginx-https"),
+    ("canonical_authorization", "schema", "unreviewed"),
+    ("canonical_authorization", "status", "revoked"),
+    ("canonical_authorization", "expires_at", NOW),
+    ("canonical_authorization", "credential_revision", 8),
+    ("canonical_authorization", "authorization_id", ident(71)),
+    ("canonical_authorization", "host_fingerprint", "f" * 64),
+    ("canonical_receipt", "outcome", "failed"),
+    ("canonical_receipt", "credential_revision", 8),
+    ("canonical_receipt", "authorization_revision", 6),
+    ("canonical_receipt", "authorization_id", ident(71)),
+    ("canonical_receipt", "installation_id", ident(71)),
+    ("canonical_receipt", "installed_at", NOW + 300),
 ])
-def test_stale_rotation_assignment_or_issuer_identity_denied(
-        tmp_path, place, key, value):
-    p, approved, installed, _ = fixture(tmp_path)
-    (approved if place == "approved" else installed)[key] = value
+def test_changed_revision_signed_owner_issuer_grant_or_canonical_delivery_denied(
+        tmp_path, component, key, value):
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    args, _ = fixture(tmp_path)
+    args[component][key] = value
+    with pytest.raises(PolicyError, match="cloudflare-https-installed-credential-not-current"):
+        accepted(args)
+
+def test_extra_fields_and_untrusted_tokens_are_never_accepted(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    for field in ("approved", "installed", "root_inspection", "owner",
+                  "installation", "canonical_authorization", "canonical_receipt"):
+        args, _ = fixture(tmp_path)
+        args[field]["cloudflare_api_token"] = "synthetic-test-only"
+        with pytest.raises(PolicyError, match="cloudflare-https-installed"):
+            accepted(args)
+
+def test_root_euid_mismatch_blocks_before_private_file_read(tmp_path):
+    args, target = fixture(tmp_path)
+    args["issuer_uid"] = 28001 if os.geteuid() != 28001 else 28002
     with pytest.raises(PolicyError, match="cloudflare-https-installed"):
-        verify_installed(tmp_path, p, approved=approved,
-                         installed=installed, issuer_uid=28001)
+        accepted(args)
+    assert target.exists()
 
-
-def test_issuer_mode_or_secret_file_missing_blocks(tmp_path):
-    p, approved, installed, target = fixture(tmp_path)
-    target.chmod(0o644)
-    with pytest.raises(PolicyError):
-        verify_installed(tmp_path, p, approved=approved,
-                         installed=installed, issuer_uid=28001)
+def test_file_symlink_missing_group_mode_or_wrong_directory_denied(tmp_path):
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    args, target = fixture(tmp_path)
+    for mode in (0o644, 0o640, 0o666):
+        target.chmod(mode)
+        with pytest.raises(PolicyError):
+            accepted(args)
+    target.chmod(0o600)
+    # In-process replacement of issuer credential must not be read via symlink.
+    backup = tmp_path / "other"
+    backup.write_bytes(target.read_bytes())
     target.unlink()
-    with pytest.raises((PolicyError, FileNotFoundError)):
-        verify_installed(tmp_path, p, approved=approved,
-                         installed=installed, issuer_uid=28001)
+    target.symlink_to(backup)
+    with pytest.raises(PolicyError):
+        accepted(args)
+    target.unlink()
+    with pytest.raises(PolicyError):
+        accepted(args)
+    target.write_bytes(b"dns_cloudflare_api_token = " + b"x"*24 + b"\n")
+    target.chmod(0o600)
+    (tmp_path / "dns").chmod(0o777)
+    with pytest.raises(PolicyError):
+        accepted(args)
 
+def test_replaced_credential_bytes_do_not_change_signed_receipt_truth(tmp_path):
+    # This readback correlates protected file ownership, not the token's
+    # *identity*. The root receiver must enforce its original durable request
+    # and prevent concurrent replacement. Issuer's renew snapshots before
+    # and after Certbot separately detect an intervening change.
+    if os.geteuid() == 0:
+        pytest.skip("requires an unprivileged issuer uid")
+    args, target = fixture(tmp_path)
+    before = accepted(args)
+    temp = target.parent / ".replaced"
+    temp.write_bytes(b"dns_cloudflare_api_token = " + b"y"*24 + b"\n")
+    temp.chmod(0o600)
+    os.replace(temp, target)
+    assert accepted(args) == before
 
-def test_fetch_is_not_part_of_selected_issue_renew_inspect_recover():
+def test_automatic_issue_renew_inspect_and_recover_do_not_invoke_https():
     import inspect
     from zog.certify_manage.manager import CertificateManager
     from zog.certify_manage import __main__ as cli
     for method in ("issue", "renew", "recover", "inspect", "stage"):
         source = inspect.getsource(getattr(CertificateManager, method))
         assert "credential_delivery" not in source
-        assert "request_fd" not in source
+        assert "cloudflare_https_contract" not in source
         assert "https" not in source.lower()
     assert '"request-credential"' not in inspect.getsource(cli.main)
     assert '"fetch-cloudflare"' not in inspect.getsource(cli.main)
